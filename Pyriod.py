@@ -75,7 +75,8 @@ class Pyriod(object):
             self.lc = lk.LightCurve(time=time, flux=flux)
         
         ### Time series widget suite ###
-        self.lcfig,self.lcax = plt.subplots(figsize=(8,3),num='Time Series ({:d})'.format(self.id))
+        self._init_timeseries_widgets()
+        self.lcfig,self.lcax = plt.subplots(figsize=(6,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_xlabel("time")
         self.lcax.set_ylabel("rel. variation")
         self.lcplot = self.lcax.plot(self.lc.time,self.lc.flux,marker='o',ls='None',ms=1)
@@ -97,7 +98,8 @@ class Pyriod(object):
         self._init_periodogram_widgets()
         
         #The interface for interacting with the values DataFrame:
-        self.Signals = self.get_qgrid()
+        self.signals_qgrid = self.get_qgrid()
+        self._init_signals_widgets()
         
         #Set up some figs/axes for time series and periodogram plots
         self.perfig,self.perax = plt.subplots(figsize=(6,3),num='Periodogram ({:d})'.format(self.id))
@@ -173,7 +175,7 @@ class Pyriod(object):
             tooltip='Click to add currently selected values to frequency solution',
             icon='plus'
         )
-        self._addtosol.on_click(self.on_button_clicked)
+        self._addtosol.on_click(self._add_staged_signal)
         
         self._snaptopeak = widgets.Checkbox(
             value=True,
@@ -186,7 +188,18 @@ class Pyriod(object):
             description='Show frequencies in period solution?',
             disabled=False
         )
-
+        
+    def _init_signals_widgets(self):
+        ### Time Series widget stuff  ###
+        self._refit = widgets.Button(
+            description='Refine fit',
+            disabled=False,
+            #button_style='success', # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Refine fit of signals to time series',
+            icon='refresh'
+        )
+        self._refit.on_click(self.fit_model)
+        
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False):
         if amp is None:
@@ -196,10 +209,12 @@ class Pyriod(object):
         
         newvalues = [freq,fixfreq,amp,fixamp,phase,fixphase]
         
-        self.values = self.values.append(dict(zip(self.columns,newvalues)),ignore_index=True)
-        self.Signals.df = self.values
+        print("Signal added to model with frequency {} and amplitude {}".format(freq,amp))
         
-    def fit_model(self):
+        self.values = self.values.append(dict(zip(self.columns,newvalues)),ignore_index=True)
+        self.signals_qgrid.df = self.values
+        
+    def fit_model(self, *args):
         """ 
         Update model to include current signals from DataFrame.
         
@@ -241,14 +256,16 @@ class Pyriod(object):
         #also rectify and negative amplitudes or phases outside [0,1)
         for i in range(len(self.values)):
             prefix = 'f{}'.format(i+1)
-            self.values['freq'][i] = params[prefix+'freq'].value
-            self.values['amp'][i] = params[prefix+'amp'].value
-            self.values['phase'][i] = params[prefix+'phase'].value
+            self.values.loc[i,'freq'] = params[prefix+'freq'].value
+            self.values.loc[i,'amp'] = params[prefix+'amp'].value
+            self.values.loc[i,'phase'] = params[prefix+'phase'].value
             #rectify
-            if self.values['amp'][i] < 0:
-                self.values['amp'][i] *= -1.
-                self.values['phase'][i] -= 0.5
-            self.values['phase'][i] %= 1.
+            if self.values.loc[i,'amp'] < 0:
+                self.values.loc[i,'amp'] *= -1.
+                self.values.loc[i,'phase'] -= 0.5
+            self.values.loc[i,'phase'] %= 1.
+        #update qgrid
+        self.signals_qgrid.df = self.values
         #TODO: also update uncertainties
        
         
@@ -300,7 +317,7 @@ class Pyriod(object):
                                column_definitions=self._column_definitions)
     
     #add staged signal to frequency solution
-    def on_button_clicked(self,*args):
+    def _add_staged_signal(self, *args):
         self.add_signal(self._thisfreq.value,self._thisamp.value)
     
     
@@ -320,7 +337,7 @@ class Pyriod(object):
                 self.perfig)
         
     def TimeSeries(self):
-        display(self.lcfig)
+        display(self._tstype,self.lcfig)
         
     def update_marker(self,x,y):
         self._thisfreq.value = x
@@ -342,4 +359,5 @@ class Pyriod(object):
             self.onclick(event)
         self.press=False; self.move=False
 
-        
+    def Signals(self):
+        display(self._refit,self.signals_qgrid)
