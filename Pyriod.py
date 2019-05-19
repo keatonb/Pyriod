@@ -99,7 +99,7 @@ class Pyriod(object):
         #self.uncertainties = pd.DataFrame(columns=self.columns[::2]) #not yet used
         
         #Compute periodogram
-        self.ls = self.lc.to_periodogram(normalization='amplitude',oversample_factor=10)
+        self.ls = self.lc.to_periodogram(normalization='amplitude',oversample_factor=10)/1e3
         
         self.interpls = interp1d(self.ls.frequency.value,self.ls.power.value)
         self._init_periodogram_widgets()
@@ -115,6 +115,8 @@ class Pyriod(object):
         plt.tight_layout()
         #set peak marker at highest peak
         self.marker = self.perax.plot([0],[0],c='k',marker='o')[0]
+        self.signal_marker_color = 'green'
+        self.signal_markers, = self.perax.plot([],[],ls='none',marker='D',fillstyle='none',c='none',ms=5)
         
         
         self.update_marker(self.ls.frequency.value[np.argmax(self.ls.power.value)],
@@ -196,6 +198,7 @@ class Pyriod(object):
             description='Show frequencies in period solution?',
             disabled=False
         )
+        self._showperiodsolution.observe(self._makeperiodsolutionvisible)
         
     def _init_signals_widgets(self):
         ### Time Series widget stuff  ###
@@ -221,6 +224,7 @@ class Pyriod(object):
         
         self.values = self.values.append(dict(zip(self.columns,newvalues)),ignore_index=True)
         self.signals_qgrid.df = self.values
+        self._update_signal_markers()
         
     def fit_model(self, *args):
         """ 
@@ -290,8 +294,10 @@ class Pyriod(object):
                                       self.values.loc[i,'freq'],
                                       self.values.loc[i,'amp'],
                                       self.values.loc[i,'phase'])
+        
+        self._update_signal_markers()
         self._update_lc_display()
-       
+        
         
     def initialize_dataframe(self):
         dtypes = ['float','bool','float','bool','float','bool']
@@ -351,6 +357,16 @@ class Pyriod(object):
                          "Residuals":self._display_residuals_lc}
         updatedisplay[displaytype]()
         
+    def _makeperiodsolutionvisible(self, *args):
+        if self._showperiodsolution.value:
+            self.signal_markers.set_color(self.signal_marker_color)
+        else:
+            self.signal_markers.set_color('none')
+        self.perfig.canvas.draw()
+        
+    def _update_signal_markers(self):
+        self.signal_markers.set_data(self.values['freq'],self.values['amp']*1e3)
+        self.perfig.canvas.draw()
         
     def _display_original_lc(self):
         self.lcplot.set_ydata(self.lc.flux)
@@ -390,7 +406,7 @@ class Pyriod(object):
         
     def update_marker(self,x,y):
         self._thisfreq.value = x
-        self._thisamp.value =  y/1e6
+        self._thisamp.value =  y/1e3
         self.marker.set_data([x],[y])
         self.perfig.canvas.draw()
         self.perfig.canvas.flush_events()
