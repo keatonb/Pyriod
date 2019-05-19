@@ -84,8 +84,9 @@ class Pyriod(object):
         #Also plot the model over the time series
         dt = np.median(np.diff(self.lc.time))
         self.lcmodel_timesample = np.arange(np.min(self.lc.time),np.max(self.lc.time)+dt,dt)
-        self.lcmodel_model = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
-        self.lcmodel, = self.lcax.plot(self.lcmodel_timesample,self.lcmodel_model,c='r',lw=1)
+        self.lcmodel_model_sampled = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
+        self.lcmodel_model_observed = np.zeros(len(self.lc.time))+np.mean(self.lc.flux)
+        self.lcmodel, = self.lcax.plot(self.lcmodel_timesample,self.lcmodel_model_sampled,c='r',lw=1)
         plt.tight_layout()
         
         #Frequency resolution is important
@@ -134,8 +135,9 @@ class Pyriod(object):
             options=['Original', 'Residuals'],
             value='Original',
             description='Time Series to Display:',
-            disabled=False,
+            disabled=False
         )
+        self._tstype.on_trait_change(self._update_lc_display)
     
     def _init_periodogram_widgets(self):
         ### Periodogram widget stuff  ###
@@ -275,15 +277,20 @@ class Pyriod(object):
         #TODO: also update uncertainties
         
         #Update time series model displayed
-        self.lcmodel_model = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
+        self.lcmodel_model_sampled = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
+        self.lcmodel_model_observed = np.zeros(len(self.lc.time))+np.mean(self.lc.flux)
+        
         for i in range(len(self.values)):
-            self.lcmodel_model += sin(self.lcmodel_timesample,
+            self.lcmodel_model_sampled += sin(self.lcmodel_timesample,
                                       self.values.loc[i,'freq'],
                                       self.values.loc[i,'amp'],
                                       self.values.loc[i,'phase'])
-        
-        self.lcmodel.set_ydata(self.lcmodel_model)
-        self.lcfig.canvas.draw()
+            
+            self.lcmodel_model_observed += sin(self.lc.time,
+                                      self.values.loc[i,'freq'],
+                                      self.values.loc[i,'amp'],
+                                      self.values.loc[i,'phase'])
+        self._update_lc_display()
        
         
     def initialize_dataframe(self):
@@ -336,6 +343,31 @@ class Pyriod(object):
     #add staged signal to frequency solution
     def _add_staged_signal(self, *args):
         self.add_signal(self._thisfreq.value,self._thisamp.value)
+        
+    #change type of time series being displayed
+    def _update_lc_display(self, *args):
+        displaytype = self._tstype.value
+        updatedisplay = {"Original":self._display_original_lc,
+                         "Residuals":self._display_residuals_lc}
+        updatedisplay[displaytype]()
+        
+        
+    def _display_original_lc(self):
+        self.lcplot.set_ydata(self.lc.flux)
+        self.lcmodel.set_ydata(self.lcmodel_model_sampled)
+        #rescale y to better match data
+        ymin = np.min([np.min(self.lc.flux),np.min(self.lcmodel_model_sampled)])
+        ymax = np.max([np.max(self.lc.flux),np.max(self.lcmodel_model_sampled)])
+        self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
+        self.lcfig.canvas.draw()
+        
+    def _display_residuals_lc(self):
+        self.lcplot.set_ydata(self.lc.flux-self.lcmodel_model_observed)
+        self.lcmodel.set_ydata(np.zeros(len(self.lcmodel_timesample)))
+        ymin = np.min(self.lc.flux-self.lcmodel_model_observed)
+        ymax = np.max(self.lc.flux-self.lcmodel_model_observed)
+        self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
+        self.lcfig.canvas.draw()
     
     
     def onperiodogramclick(self,event):
