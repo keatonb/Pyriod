@@ -74,15 +74,21 @@ class Pyriod(object):
         else:
             self.lc = lk.LightCurve(time=time, flux=flux)
         
+        
         ### Time series widget suite ###
         self._init_timeseries_widgets()
         self.lcfig,self.lcax = plt.subplots(figsize=(6,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_xlabel("time")
         self.lcax.set_ylabel("rel. variation")
-        self.lcplot = self.lcax.plot(self.lc.time,self.lc.flux,marker='o',ls='None',ms=1)
+        self.lcplot, = self.lcax.plot(self.lc.time,self.lc.flux,marker='o',ls='None',ms=1)
+        #Also plot the model over the time series
+        dt = np.median(np.diff(self.lc.time))
+        self.lcmodel_timesample = np.arange(np.min(self.lc.time),np.max(self.lc.time)+dt,dt)
+        self.lcmodel_model = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
+        self.lcmodel, = self.lcax.plot(self.lcmodel_timesample,self.lcmodel_model,c='r',lw=1)
         plt.tight_layout()
         
-        #Frequency resolution will be important for fitting
+        #Frequency resolution is important
         self.fres = 1./(self.lc.time[-1]-self.lc.time[0])
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
@@ -267,6 +273,17 @@ class Pyriod(object):
         #update qgrid
         self.signals_qgrid.df = self.values
         #TODO: also update uncertainties
+        
+        #Update time series model displayed
+        self.lcmodel_model = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
+        for i in range(len(self.values)):
+            self.lcmodel_model += sin(self.lcmodel_timesample,
+                                      self.values.loc[i,'freq'],
+                                      self.values.loc[i,'amp'],
+                                      self.values.loc[i,'phase'])
+        
+        self.lcmodel.set_ydata(self.lcmodel_model)
+        self.lcfig.canvas.draw()
        
         
     def initialize_dataframe(self):
