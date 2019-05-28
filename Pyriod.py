@@ -107,6 +107,7 @@ class Pyriod(object):
         #The interface for interacting with the values DataFrame:
         self.signals_qgrid = self.get_qgrid()
         self._init_signals_widgets()
+        self.signals_qgrid.on('cell_edited', self._update_values_from_qgrid)
         
         #Set up some figs/axes for time series and periodogram plots
         self.perfig,self.perax = plt.subplots(figsize=(6,3),num='Periodogram ({:d})'.format(self.id))
@@ -256,14 +257,14 @@ class Pyriod(object):
         #refine, allowing freq to vary (unless fixed by user)
         params = result.params
         for i,freqkey in enumerate(freqkeys):
-            params[freqkey+'freq'].set(vary=~self.values.fixphase[i])
+            params[freqkey+'freq'].set(vary=~self.values.fixfreq[i])
             params[freqkey+'amp'].set(result.params[freqkey+'amp'].value)
             params[freqkey+'phase'].set(result.params[freqkey+'phase'].value)
         result = model.fit(self.lc.flux-np.mean(self.lc.flux), params, x=self.lc.time)
         
-        self.update_values(result.params)
+        self._update_values_from_fit(result.params)
         
-    def update_values(self,params):
+    def _update_values_from_fit(self,params):
         #update dataframe of params with new values from fit
         #also rectify and negative amplitudes or phases outside [0,1)
         for i in range(len(self.values)):
@@ -280,6 +281,11 @@ class Pyriod(object):
         self.signals_qgrid.df = self.values
         #TODO: also update uncertainties
         
+        self._update_values_from_qgrid()
+        
+        
+    def _update_values_from_qgrid(self, *args):
+        self.values = self.signals_qgrid.get_changed_df()
         #Update time series model displayed
         self.lcmodel_model_sampled = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
         self.lcmodel_model_observed = np.zeros(len(self.lc.time))+np.mean(self.lc.flux)
@@ -297,7 +303,6 @@ class Pyriod(object):
         
         self._update_signal_markers()
         self._update_lc_display()
-        
         
     def initialize_dataframe(self):
         dtypes = ['float','bool','float','bool','float','bool']
@@ -321,7 +326,7 @@ class Pyriod(object):
             'enableTextSelectionOnCells': True,
             'editable': True,
             'autoEdit': True, #double-click not required!
-            'explicitInitialization': True,
+            'explicitInitialization': False,
             
 
             # Qgrid options
