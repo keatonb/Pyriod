@@ -26,17 +26,26 @@ Long list of todos:
 
 from __future__ import division, print_function
  
+import sys
 import numpy as np
 import itertools
 import pandas as pd
-from astropy.stats import LombScargle
+#from astropy.stats import LombScargle
 from scipy.interpolate import interp1d
 import lightkurve as lk
 from lmfit import Model, Parameters
+from lmfit.models import ConstantModel
 #from IPython.display import display #needed?
 import matplotlib.pyplot as plt 
 import ipywidgets as widgets
 import qgrid
+'''enable when ready to use
+import logging
+if sys.version_info < (3, 0):
+    from io import BytesIO as StringIO
+else:
+    from io import StringIO
+'''
 
 plt.ioff()
 
@@ -93,7 +102,6 @@ class Pyriod(object):
         self.fres = 1./(self.lc.time[-1]-self.lc.time[0])
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
-        self.columns = ['freq','fixfreq','amp','fixamp','phase','fixphase']
         self.values = self.initialize_dataframe()
         
         #self.uncertainties = pd.DataFrame(columns=self.columns[::2]) #not yet used
@@ -106,8 +114,8 @@ class Pyriod(object):
         
         #The interface for interacting with the values DataFrame:
         self.signals_qgrid = self.get_qgrid()
-        self._init_signals_widgets()
         self.signals_qgrid.on('cell_edited', self._update_values_from_qgrid)
+        self._init_signals_widgets()
         
         #Set up some figs/axes for time series and periodogram plots
         self.perfig,self.perax = plt.subplots(figsize=(6,3),num='Periodogram ({:d})'.format(self.id))
@@ -151,7 +159,15 @@ class Pyriod(object):
             disabled=False,
         )
         
-        self._thisfreq = widgets.BoundedFloatText(
+        self._thisfreq = widgets.Text(
+            value='',
+            placeholder='',
+            description='Frequency:',
+            disabled=False
+        )
+        
+        """
+        .BoundedFloatText(
             value=0.001,
             min=0,
             #max=np.max(freq),  #fix later
@@ -159,6 +175,7 @@ class Pyriod(object):
             description='Frequency:',
             disabled=False
         )
+        """
         
         self._thisamp = widgets.BoundedFloatText(
             value=0.001,
@@ -218,12 +235,17 @@ class Pyriod(object):
             amp = 1.
         if phase is None:
             phase = 0.5
-        
-        newvalues = [freq,fixfreq,amp,fixamp,phase,fixphase]
-        
+        print(self.signals_qgrid.df.dtypes)
+        #list of iterables required to pass to dataframe without an index
+        newvalues = [[nv] for nv in [freq,fixfreq,amp,fixamp,phase,fixphase]]
+        print(self.values.freq)
         print("Signal added to model with frequency {} and amplitude {}".format(freq,amp))
-        
-        self.values = self.values.append(dict(zip(self.columns,newvalues)),ignore_index=True)
+        toappend = pd.DataFrame(dict(zip(self.columns,newvalues)),columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
+        print(toappend)
+        print(toappend.dtypes)
+        self.values = self.values.append(toappend,ignore_index=True)
+        print(self.values.freq)
+        print(toappend.dtypes)
         self.signals_qgrid.df = self.values
         self._update_signal_markers()
         
@@ -269,7 +291,7 @@ class Pyriod(object):
         #also rectify and negative amplitudes or phases outside [0,1)
         for i in range(len(self.values)):
             prefix = 'f{}'.format(i+1)
-            self.values.loc[i,'freq'] = params[prefix+'freq'].value
+            self.values.loc[i,'freq'] = float(params[prefix+'freq'].value)
             self.values.loc[i,'amp'] = params[prefix+'amp'].value
             self.values.loc[i,'phase'] = params[prefix+'phase'].value
             #rectify
@@ -291,24 +313,25 @@ class Pyriod(object):
         self.lcmodel_model_observed = np.zeros(len(self.lc.time))+np.mean(self.lc.flux)
         
         for i in range(len(self.values)):
+            freq = float(self.values.loc[i,'freq'])
+            amp = float(self.values.loc[i,'amp'])
+            phase = float(self.values.loc[i,'phase'])
             self.lcmodel_model_sampled += sin(self.lcmodel_timesample,
-                                      self.values.loc[i,'freq'],
-                                      self.values.loc[i,'amp'],
-                                      self.values.loc[i,'phase'])
+                                              freq,amp,phase)
             
             self.lcmodel_model_observed += sin(self.lc.time,
-                                      self.values.loc[i,'freq'],
-                                      self.values.loc[i,'amp'],
-                                      self.values.loc[i,'phase'])
+                                               freq,amp,phase)
         
         self._update_signal_markers()
         self._update_lc_display()
-        
+    
+    columns = ['freq','fixfreq','amp','fixamp','phase','fixphase']
+    dtypes = ['object','bool','float','bool','float','bool']
+    
     def initialize_dataframe(self):
-        dtypes = ['float','bool','float','bool','float','bool']
-        df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,dtypes)))
+        df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
         df.index.name = 'ID'
-        
+        print(df.dtypes)
         return df
     
     
@@ -326,7 +349,7 @@ class Pyriod(object):
             'enableTextSelectionOnCells': True,
             'editable': True,
             'autoEdit': True, #double-click not required!
-            'explicitInitialization': False,
+            'explicitInitialization': True,
             
 
             # Qgrid options
@@ -347,7 +370,7 @@ class Pyriod(object):
     
     
     def get_qgrid(self):
-        return qgrid.show_grid(self.values, show_toolbar=True, precision = 10,
+        return qgrid.show_grid(self.values, show_toolbar=False, precision = 10,
                                grid_options=self._gridoptions,
                                column_definitions=self._column_definitions)
     
@@ -370,7 +393,7 @@ class Pyriod(object):
         self.perfig.canvas.draw()
         
     def _update_signal_markers(self):
-        self.signal_markers.set_data(self.values['freq'],self.values['amp']*1e3)
+        self.signal_markers.set_data(self.values['freq'].astype('float'),self.values['amp']*1e3)
         self.perfig.canvas.draw()
         
     def _display_original_lc(self):
@@ -394,8 +417,12 @@ class Pyriod(object):
     def onperiodogramclick(self,event):
         if self._snaptopeak.value:
             freqs = self.ls.frequency.value
-            nearby = np.argwhere((freqs >= event.xdata - self.fres) & 
-                                 (freqs <= event.xdata + self.fres))
+            #click within either frequency resolution or 1% of displayed range
+            #TODO: make this work with log frequency too
+            tolerance = np.max([self.fres,0.01*np.diff(self.perax.get_xlim())])
+            
+            nearby = np.argwhere((freqs >= event.xdata - tolerance) & 
+                                 (freqs <= event.xdata + tolerance))
             highestind = np.argmax(self.ls.power.value[nearby]) + nearby[0]
             self.update_marker(freqs[highestind],self.ls.power.value[highestind])
         else:
@@ -410,7 +437,10 @@ class Pyriod(object):
         display(self._tstype,self.lcfig)
         
     def update_marker(self,x,y):
-        self._thisfreq.value = x
+        try:
+            self._thisfreq.value = str(x[0])
+        except:
+            self._thisfreq.value = str(x)
         self._thisamp.value =  y/1e3
         self.marker.set_data([x],[y])
         self.perfig.canvas.draw()
