@@ -30,6 +30,8 @@ import sys
 import numpy as np
 import itertools
 import re
+#import ast
+#import operator as op
 import pandas as pd
 #from astropy.stats import LombScargle
 from scipy.interpolate import interp1d
@@ -236,25 +238,44 @@ class Pyriod(object):
             amp = 1.
         if phase is None:
             phase = 0.5
-        print(self.signals_qgrid.df.dtypes)
+        #print(self.signals_qgrid.df.dtypes)
         #list of iterables required to pass to dataframe without an index
         newvalues = [[nv] for nv in [freq,fixfreq,amp,fixamp,phase,fixphase]]
-        print(self.values.freq)
-        print("Signal added to model with frequency {} and amplitude {}".format(freq,amp))
+        #print(self.values.freq)
+        if index == None:
+            index = "f{}".format(len(self.values))
+        print("Signal {} added to model with frequency {} and amplitude {}".format(index,freq,amp))
         toappend = pd.DataFrame(dict(zip(self.columns,newvalues)),columns=self.columns,
-                                index=["f{}".format(len(self.values))])
+                                index=[index])
         #.astype(dtype=dict(zip(self.columns,self.dtypes)))
-        print(toappend)
-        print(toappend.dtypes)
-        self.values = self.values.append(toappend)
-        print(self.values.freq)
-        print(toappend.dtypes)
-        self.signals_qgrid.df = self.values
+        #print(toappend)
+        #print(toappend.dtypes)
+        self.values = self.values.append(toappend,sort=False)
+        #print(self.values.freq)
+        #print(toappend.dtypes)
+        self.signals_qgrid.df = self.values[self.columns[:6]]
         self._update_signal_markers()
         
+    #operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
+    #             ast.Div: op.truediv,ast.USub: op.neg}
     def add_combination(self, combostr, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False, index=None):
-        print(combostr)
+        combostr = combostr.replace(" ", "")
+        #evaluate combostring:
+        
+        #replace keys with values
+        parts = re.split('\+|\-|\*|\/',combostr)
+        keys = set([part for part in parts if part in self.values.index])
+        expression = combostr
+        for key in keys:
+            expression = expression.replace(key, str(self.values.loc[key,'freq']))
+        #print(ast.parse(combostr, mode='eval').body)
+        freqval = eval(expression)
+        if amp == None:
+            amp = self.interpls(freqval)/1e3
+        self.add_signal(freqval,amp,index=combostr)
+        #allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
+        
     
     def fit_model(self, *args):
         """ 
@@ -264,49 +285,77 @@ class Pyriod(object):
         """
         #Set up lmfit model for fitting
         signals = {} #empty dict to be populated
-        #freqkeys = [] #prefixes for each signal
         params = Parameters()
+        
+        #handle combination frequencies differently
+        isindep = lambda key: key[1:].isdigit()
+        cnum = 0
+        
+        prefixmap = {}
         
         #first with frequencies fixed
         for prefix in self.values.index:
             #prefix = 'f{}'.format(i+1)
             #freqkeys.append(prefix)
-            signals[prefix] = Model(sin,prefix=prefix)
-            params.update(signals[prefix].make_params())
-            params[prefix+'freq'].set(self.values.freq[prefix], vary=False)
-            params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
-            params[prefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
+            if isindep(prefix):
+                signals[prefix] = Model(sin,prefix=prefix)
+                params.update(signals[prefix].make_params())
+                params[prefix+'freq'].set(self.values.freq[prefix], vary=False)
+                params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+                params[prefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
+                prefixmap[prefix] = prefix
+            else: #combination
+                useprefix = 'c{}'.format(cnum)
+                signals[useprefix] = Model(sin,prefix=useprefix)
+                params.update(signals[useprefix].make_params())
+                parts = re.split('\+|\-|\*|\/',prefix)
+                keys = set([part for part in parts if part in self.values.index])
+                expression = prefix
+                for key in keys:
+                    expression = expression.replace(key, key+'freq')
+                params[useprefix+'freq'].set(expr=expression)
+                params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+                params[useprefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
+                prefixmap[prefix] = useprefix
+                cnum+=1
         
         #model is sum of sines
-        model = np.sum([signals[freqkey] for freqkey in self.values.index])
+        model = np.sum([signals[prefixmap[prefix]] for prefix in self.values.index])
         
         #compute fixed-frequency fit
         result = model.fit(self.lc.flux-np.mean(self.lc.flux), params, x=self.lc.time)
         
         #refine, allowing freq to vary (unless fixed by user)
         params = result.params
+        
         for prefix in self.values.index:
-            params[prefix+'freq'].set(vary=~self.values.fixfreq[prefix])
-            params[prefix+'amp'].set(result.params[prefix+'amp'].value)
-            params[prefix+'phase'].set(result.params[prefix+'phase'].value)
+            if isindep(prefix):
+                params[prefixmap[prefix]+'freq'].set(vary=~self.values.fixfreq[prefix])
+                params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
+                params[prefixmap[prefix]+'phase'].set(result.params[prefixmap[prefix]+'phase'].value)
+                
         result = model.fit(self.lc.flux-np.mean(self.lc.flux), params, x=self.lc.time)
         
-        self._update_values_from_fit(result.params)
+        self._update_values_from_fit(result.params,prefixmap)
         
-    def _update_values_from_fit(self,params):
+        
+    def _update_values_from_fit(self,params,prefixmap):
         #update dataframe of params with new values from fit
         #also rectify and negative amplitudes or phases outside [0,1)
+        #isindep = lambda key: key[1:].isdigit()
+        #cnum = 0
         for prefix in self.values.index:
-            self.values.loc[prefix,'freq'] = float(params[prefix+'freq'].value)
-            self.values.loc[prefix,'amp'] = params[prefix+'amp'].value
-            self.values.loc[prefix,'phase'] = params[prefix+'phase'].value
+            self.values.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value)
+            self.values.loc[prefix,'amp'] = params[prefixmap[prefix]+'amp'].value
+            self.values.loc[prefix,'phase'] = params[prefixmap[prefix]+'phase'].value
             #rectify
             if self.values.loc[prefix,'amp'] < 0:
                 self.values.loc[prefix,'amp'] *= -1.
                 self.values.loc[prefix,'phase'] -= 0.5
             self.values.loc[prefix,'phase'] %= 1.
+            
         #update qgrid
-        self.signals_qgrid.df = self.values
+        self.signals_qgrid.df = self.values[self.columns[:6]]
         #TODO: also update uncertainties
         
         self._update_values_from_qgrid()
@@ -331,13 +380,13 @@ class Pyriod(object):
         self._update_signal_markers()
         self._update_lc_display()
     
-    columns = ['freq','fixfreq','amp','fixamp','phase','fixphase']
-    dtypes = ['object','bool','float','bool','float','bool']
+    columns = ['freq','fixfreq','amp','fixamp','phase','fixphase','combo']
+    dtypes = ['object','bool','float','bool','float','bool','bool']
     
     def initialize_dataframe(self):
         df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
-        df.index.name = 'ID'
-        print(df.dtypes)
+        #df.index.name = 'ID'
+        #print(df.dtypes)
         return df
     
     
@@ -376,7 +425,7 @@ class Pyriod(object):
     
     
     def get_qgrid(self):
-        return qgrid.show_grid(self.values, show_toolbar=False, precision = 10,
+        return qgrid.show_grid(self.values[self.columns[:6]], show_toolbar=False, precision = 10,
                                grid_options=self._gridoptions,
                                column_definitions=self._column_definitions)
     
@@ -392,7 +441,8 @@ class Pyriod(object):
             parts = re.split('\+|\-|\*|\/',self._thisfreq.value.replace(" ", ""))
             allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
             if allvalid and (len(parts) > 1):
-                self.add_combination(self._thisfreq.value,self._thisamp.value)
+                #will guess amplitude from periodogram
+                self.add_combination(self._thisfreq.value)
             else:
                 print("Staged frequency has invalid format: "+self._thisfreq.value)
         
@@ -479,3 +529,7 @@ class Pyriod(object):
 
     def Signals(self):
         display(self._refit,self.signals_qgrid)
+        
+    
+        
+    
