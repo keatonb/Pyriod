@@ -42,13 +42,11 @@ from lmfit.models import ConstantModel
 import matplotlib.pyplot as plt 
 import ipywidgets as widgets
 import qgrid
-'''enable when ready to use
 import logging
 if sys.version_info < (3, 0):
     from io import BytesIO as StringIO
 else:
     from io import StringIO
-'''
 
 plt.ioff()
 
@@ -142,6 +140,8 @@ class Pyriod(object):
         self.perfig.canvas.mpl_connect('button_release_event', self.onrelease)
         self.perfig.canvas.mpl_connect('motion_notify_event', self.onmove)
     
+        #Set up the log
+        self._init_log()
     
     def _init_timeseries_widgets(self):
         ### Time Series widget stuff  ###
@@ -169,16 +169,6 @@ class Pyriod(object):
             disabled=False
         )
         
-        """
-        .BoundedFloatText(
-            value=0.001,
-            min=0,
-            #max=np.max(freq),  #fix later
-            step=None,
-            description='Frequency:',
-            disabled=False
-        )
-        """
         
         self._thisamp = widgets.FloatText(
             value=0.001,
@@ -232,6 +222,17 @@ class Pyriod(object):
         )
         self._refit.on_click(self.fit_model)
         
+    def _init_log(self):
+        self.logger = logging.getLogger('basic_logger')
+        self.logger.setLevel(logging.DEBUG)
+        self.log_capture_string = StringIO()
+        ch = logging.StreamHandler(self.log_capture_string)
+        ch.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+    
+        
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False, index=None):
         if amp is None:
@@ -244,17 +245,12 @@ class Pyriod(object):
         #print(self.values.freq)
         if index == None:
             index = "f{}".format(len(self.values))
-        print("Signal {} added to model with frequency {} and amplitude {}".format(index,freq,amp))
         toappend = pd.DataFrame(dict(zip(self.columns,newvalues)),columns=self.columns,
                                 index=[index])
-        #.astype(dtype=dict(zip(self.columns,self.dtypes)))
-        #print(toappend)
-        #print(toappend.dtypes)
         self.values = self.values.append(toappend,sort=False)
-        #print(self.values.freq)
-        #print(toappend.dtypes)
         self.signals_qgrid.df = self.values[self.columns[:6]]
         self._update_signal_markers()
+        self.logger.info("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
         
     #operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
     #             ast.Div: op.truediv,ast.USub: op.neg}
@@ -269,12 +265,11 @@ class Pyriod(object):
         expression = combostr
         for key in keys:
             expression = expression.replace(key, str(self.values.loc[key,'freq']))
-        #print(ast.parse(combostr, mode='eval').body)
         freqval = eval(expression)
         if amp == None:
             amp = self.interpls(freqval)/1e3
         self.add_signal(freqval,amp,index=combostr)
-        #allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
+        self.logger.info("Combination {} added to model.".format(combostr))
         
     
     def fit_model(self, *args):
@@ -337,7 +332,7 @@ class Pyriod(object):
         result = model.fit(self.lc.flux-np.mean(self.lc.flux), params, x=self.lc.time)
         
         self._update_values_from_fit(result.params,prefixmap)
-        
+        self.logger.info("Fit refined.")
         
     def _update_values_from_fit(self,params,prefixmap):
         #update dataframe of params with new values from fit
@@ -530,6 +525,7 @@ class Pyriod(object):
     def Signals(self):
         display(self._refit,self.signals_qgrid)
         
-    
+    def Log(self):
+        print(self.log_capture_string.getvalue())
         
     
