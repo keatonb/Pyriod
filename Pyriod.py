@@ -177,11 +177,11 @@ class Pyriod(object):
         )
         """
         
-        self._thisamp = widgets.BoundedFloatText(
+        self._thisamp = widgets.FloatText(
             value=0.001,
-            min=0,
+            #min=0,
             #max=np.max(amp),
-            step=None,
+            #step=None,
             description='Amplitude:',
             disabled=False
         )
@@ -230,7 +230,7 @@ class Pyriod(object):
         self._refit.on_click(self.fit_model)
         
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
-                   fixamp=False, fixphase=False):
+                   fixamp=False, fixphase=False, index=None):
         if amp is None:
             amp = 1.
         if phase is None:
@@ -240,10 +240,12 @@ class Pyriod(object):
         newvalues = [[nv] for nv in [freq,fixfreq,amp,fixamp,phase,fixphase]]
         print(self.values.freq)
         print("Signal added to model with frequency {} and amplitude {}".format(freq,amp))
-        toappend = pd.DataFrame(dict(zip(self.columns,newvalues)),columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
+        toappend = pd.DataFrame(dict(zip(self.columns,newvalues)),columns=self.columns,
+                                index=["f{}".format(len(self.values))])
+        #.astype(dtype=dict(zip(self.columns,self.dtypes)))
         print(toappend)
         print(toappend.dtypes)
-        self.values = self.values.append(toappend,ignore_index=True)
+        self.values = self.values.append(toappend)
         print(self.values.freq)
         print(toappend.dtypes)
         self.signals_qgrid.df = self.values
@@ -257,31 +259,31 @@ class Pyriod(object):
         """
         #Set up lmfit model for fitting
         signals = {} #empty dict to be populated
-        freqkeys = [] #prefixes for each signal
+        #freqkeys = [] #prefixes for each signal
         params = Parameters()
         
         #first with frequencies fixed
-        for i in range(len(self.values)):
-            prefix = 'f{}'.format(i+1)
-            freqkeys.append(prefix)
+        for prefix in self.values.index:
+            #prefix = 'f{}'.format(i+1)
+            #freqkeys.append(prefix)
             signals[prefix] = Model(sin,prefix=prefix)
             params.update(signals[prefix].make_params())
-            params[prefix+'freq'].set(self.values.freq[i], vary=False)
-            params[prefix+'amp'].set(self.values.amp[i], vary=~self.values.fixamp[i])
-            params[prefix+'phase'].set(self.values.phase[i], vary=~self.values.fixphase[i])
+            params[prefix+'freq'].set(self.values.freq[prefix], vary=False)
+            params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+            params[prefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
         
         #model is sum of sines
-        model = np.sum([signals[freqkey] for freqkey in freqkeys])
+        model = np.sum([signals[freqkey] for freqkey in self.values.index])
         
         #compute fixed-frequency fit
         result = model.fit(self.lc.flux-np.mean(self.lc.flux), params, x=self.lc.time)
         
         #refine, allowing freq to vary (unless fixed by user)
         params = result.params
-        for i,freqkey in enumerate(freqkeys):
-            params[freqkey+'freq'].set(vary=~self.values.fixfreq[i])
-            params[freqkey+'amp'].set(result.params[freqkey+'amp'].value)
-            params[freqkey+'phase'].set(result.params[freqkey+'phase'].value)
+        for prefix in self.values.index:
+            params[prefix+'freq'].set(vary=~self.values.fixfreq[prefix])
+            params[prefix+'amp'].set(result.params[prefix+'amp'].value)
+            params[prefix+'phase'].set(result.params[prefix+'phase'].value)
         result = model.fit(self.lc.flux-np.mean(self.lc.flux), params, x=self.lc.time)
         
         self._update_values_from_fit(result.params)
@@ -289,16 +291,15 @@ class Pyriod(object):
     def _update_values_from_fit(self,params):
         #update dataframe of params with new values from fit
         #also rectify and negative amplitudes or phases outside [0,1)
-        for i in range(len(self.values)):
-            prefix = 'f{}'.format(i+1)
-            self.values.loc[i,'freq'] = float(params[prefix+'freq'].value)
-            self.values.loc[i,'amp'] = params[prefix+'amp'].value
-            self.values.loc[i,'phase'] = params[prefix+'phase'].value
+        for prefix in self.values.index:
+            self.values.loc[prefix,'freq'] = float(params[prefix+'freq'].value)
+            self.values.loc[prefix,'amp'] = params[prefix+'amp'].value
+            self.values.loc[prefix,'phase'] = params[prefix+'phase'].value
             #rectify
-            if self.values.loc[i,'amp'] < 0:
-                self.values.loc[i,'amp'] *= -1.
-                self.values.loc[i,'phase'] -= 0.5
-            self.values.loc[i,'phase'] %= 1.
+            if self.values.loc[prefix,'amp'] < 0:
+                self.values.loc[prefix,'amp'] *= -1.
+                self.values.loc[prefix,'phase'] -= 0.5
+            self.values.loc[prefix,'phase'] %= 1.
         #update qgrid
         self.signals_qgrid.df = self.values
         #TODO: also update uncertainties
@@ -312,10 +313,10 @@ class Pyriod(object):
         self.lcmodel_model_sampled = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
         self.lcmodel_model_observed = np.zeros(len(self.lc.time))+np.mean(self.lc.flux)
         
-        for i in range(len(self.values)):
-            freq = float(self.values.loc[i,'freq'])
-            amp = float(self.values.loc[i,'amp'])
-            phase = float(self.values.loc[i,'phase'])
+        for prefix in self.values.index:
+            freq = float(self.values.loc[prefix,'freq'])
+            amp = float(self.values.loc[prefix,'amp'])
+            phase = float(self.values.loc[prefix,'phase'])
             self.lcmodel_model_sampled += sin(self.lcmodel_timesample,
                                               freq,amp,phase)
             
@@ -376,7 +377,14 @@ class Pyriod(object):
     
     #add staged signal to frequency solution
     def _add_staged_signal(self, *args):
-        self.add_signal(self._thisfreq.value,self._thisamp.value)
+        #Is this a valid numeric frequency?
+        if self._thisfreq.value.replace('.','',1).isdigit():
+            self.add_signal(float(self._thisfreq.value),self._thisamp.value)
+        #Is it a valid combination frequency?
+        #elif
+        #Otherwise issue a warning
+        else:
+            print("Staged frequency has invalid format.")
         
     #change type of time series being displayed
     def _update_lc_display(self, *args):
