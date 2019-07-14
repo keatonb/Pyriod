@@ -29,6 +29,7 @@ from __future__ import division, print_function
 import sys
 import numpy as np
 import itertools
+import re
 import pandas as pd
 #from astropy.stats import LombScargle
 from scipy.interpolate import interp1d
@@ -251,6 +252,10 @@ class Pyriod(object):
         self.signals_qgrid.df = self.values
         self._update_signal_markers()
         
+    def add_combination(self, combostr, amp=None, phase=None, fixfreq=False, 
+                   fixamp=False, fixphase=False, index=None):
+        print(combostr)
+    
     def fit_model(self, *args):
         """ 
         Update model to include current signals from DataFrame.
@@ -384,7 +389,12 @@ class Pyriod(object):
         #elif
         #Otherwise issue a warning
         else:
-            print("Staged frequency has invalid format.")
+            parts = re.split('\+|\-|\*|\/',self._thisfreq.value.replace(" ", ""))
+            allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
+            if allvalid and (len(parts) > 1):
+                self.add_combination(self._thisfreq.value,self._thisamp.value)
+            else:
+                print("Staged frequency has invalid format: "+self._thisfreq.value)
         
     #change type of time series being displayed
     def _update_lc_display(self, *args):
