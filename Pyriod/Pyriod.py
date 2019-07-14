@@ -137,7 +137,8 @@ class Pyriod(object):
         self.perfig.canvas.mpl_connect('button_release_event', self.onrelease)
         self.perfig.canvas.mpl_connect('motion_notify_event', self.onmove)
     
-    
+        self.logger.info("Pyriod object initialized.")
+        
     def _init_timeseries_widgets(self):
         ### Time Series widget stuff  ###
         self._tstype = widgets.Dropdown(
@@ -217,7 +218,11 @@ class Pyriod(object):
         )
         self._refit.on_click(self.fit_model)
         
+    
+        
     def _init_log(self):
+        #To log messages, use self.logger.debug(),.info(),.warn(),.error(),.critical()
+        
         self.logger = logging.getLogger('basic_logger')
         self.logger.setLevel(logging.DEBUG)
         self.log_capture_string = StringIO()
@@ -234,10 +239,8 @@ class Pyriod(object):
             amp = 1.
         if phase is None:
             phase = 0.5
-        #print(self.signals_qgrid.df.dtypes)
         #list of iterables required to pass to dataframe without an index
         newvalues = [[nv] for nv in [freq,fixfreq,amp,fixamp,phase,fixphase]]
-        #print(self.values.freq)
         if index == None:
             index = "f{}".format(len(self.values))
         toappend = pd.DataFrame(dict(zip(self.columns,newvalues)),columns=self.columns,
@@ -394,8 +397,6 @@ class Pyriod(object):
     
     def initialize_dataframe(self):
         df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
-        #df.index.name = 'ID'
-        #print(df.dtypes)
         return df
     
     
@@ -443,17 +444,16 @@ class Pyriod(object):
         #Is this a valid numeric frequency?
         if self._thisfreq.value.replace('.','',1).isdigit():
             self.add_signal(float(self._thisfreq.value),self._thisamp.value)
-        #Is it a valid combination frequency?
-        #elif
-        #Otherwise issue a warning
         else:
             parts = re.split('\+|\-|\*|\/',self._thisfreq.value.replace(" ", ""))
             allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
+            #Is it a valid combination frequency?
             if allvalid and (len(parts) > 1):
                 #will guess amplitude from periodogram
                 self.add_combination(self._thisfreq.value)
+            #Otherwise issue a warning
             else:
-                print("Staged frequency has invalid format: "+self._thisfreq.value)
+                self.logger.error("Staged frequency has invalid format: {}".format(self._thisfreq.value))
         
     #change type of time series being displayed
     def _update_lc_display(self, *args):
