@@ -10,13 +10,6 @@ For more, see https://github.com/keatonb/Pyriod
 
 ---------------------
 
-Long list of todos:
-    - Validate that time, flux, fluxerr, etc. have same length
-    - Allow (encourage) lightkurve objects to be passed
-    
-    
-    
-        
 # Distinguish clicks with drag motions
 # From ImportanceOfBeingErnest
 # https://stackoverflow.com/questions/48446351/distinguish-button-press-event-from-drag-and-zoom-clicks-in-matplotlib
@@ -37,7 +30,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 import lightkurve as lk
 from lmfit import Model, Parameters
-from lmfit.models import ConstantModel
+#from lmfit.models import ConstantModel
 #from IPython.display import display #needed?
 import matplotlib.pyplot as plt 
 import ipywidgets as widgets
@@ -84,6 +77,8 @@ class Pyriod(object):
         else:
             self.lc = lk.LightCurve(time=time, flux=flux)
         
+        #Set up the log
+        self._init_log()
         
         ### Time series widget suite ###
         self._init_timeseries_widgets()
@@ -101,6 +96,8 @@ class Pyriod(object):
         
         #Frequency resolution is important
         self.fres = 1./(self.lc.time[-1]-self.lc.time[0])
+        #And the Nyquist (approximate for unevenly sampled data)
+        self.nyq = 1./(2.*dt)
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
         self.values = self.initialize_dataframe()
@@ -115,7 +112,7 @@ class Pyriod(object):
         
         #The interface for interacting with the values DataFrame:
         self.signals_qgrid = self.get_qgrid()
-        self.signals_qgrid.on('cell_edited', self._update_values_from_qgrid)
+        self.signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
         self._init_signals_widgets()
         
         #Set up some figs/axes for time series and periodogram plots
@@ -140,8 +137,6 @@ class Pyriod(object):
         self.perfig.canvas.mpl_connect('button_release_event', self.onrelease)
         self.perfig.canvas.mpl_connect('motion_notify_event', self.onmove)
     
-        #Set up the log
-        self._init_log()
     
     def _init_timeseries_widgets(self):
         ### Time Series widget stuff  ###
@@ -355,8 +350,7 @@ class Pyriod(object):
         
         self._update_values_from_qgrid()
         
-        
-    def _update_values_from_qgrid(self, *args):
+    def _update_values_from_qgrid(self):# *args
         self.values = self.signals_qgrid.get_changed_df()
         #Update time series model displayed
         self.lcmodel_model_sampled = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
@@ -374,6 +368,26 @@ class Pyriod(object):
         
         self._update_signal_markers()
         self._update_lc_display()
+    
+    def _qgrid_changed_manually(self, *args):
+        #note: args has information about what changed if needed
+        newdf = self.signals_qgrid.get_changed_df()
+        olddf = self.signals_qgrid.df
+        logmessage = "Signals table changed manually.\n"
+        for key in newdf.index.values:
+            if key in olddf.index.values:
+                changes = newdf.loc[key][olddf.loc[key] != newdf.loc[key]]
+                if len(changes > 0):
+                    logmessage += "Values changed for {}:\n".format(key)
+                for change in changes.index:
+                    logmessage += " - {} -> {}\n".format(change,changes[change])
+            else:
+                logmessage += "New row in solution table: {}\n".format(key)
+                for col in newdf.loc[key]:
+                    logmessage += " - {} -> {}\n".format(change,changes[change])
+        self.logger.info(logmessage)
+        self.signals_qgrid.df = self.signals_qgrid.get_changed_df()
+        self._update_values_from_qgrid()
     
     columns = ['freq','fixfreq','amp','fixamp','phase','fixphase','combo']
     dtypes = ['object','bool','float','bool','float','bool','bool']
