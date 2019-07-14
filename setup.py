@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="pyriod",
+    name="Pyriod",
     version="0.0.1",
     author="Keaton Bell",
     author_email="keatonbell@utexas.edu",
