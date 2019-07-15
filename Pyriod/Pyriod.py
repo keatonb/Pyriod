@@ -23,15 +23,12 @@ import sys
 import numpy as np
 import itertools
 import re
-#import ast
-#import operator as op
 import pandas as pd
-#from astropy.stats import LombScargle
 from scipy.interpolate import interp1d
 import lightkurve as lk
 from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
-#from IPython.display import display #needed?
+from IPython.display import display
 import matplotlib.pyplot as plt 
 import ipywidgets as widgets
 import qgrid
