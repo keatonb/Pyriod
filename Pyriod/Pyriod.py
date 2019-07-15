@@ -134,7 +134,7 @@ class Pyriod(object):
         self.perfig.canvas.mpl_connect('button_release_event', self.onrelease)
         self.perfig.canvas.mpl_connect('motion_notify_event', self.onmove)
     
-        self.logger.info("Pyriod object initialized.")
+        self.log("Pyriod object initialized.")
         
     def _init_timeseries_widgets(self):
         ### Time Series widget stuff  ###
@@ -218,7 +218,7 @@ class Pyriod(object):
     
         
     def _init_log(self):
-        #To log messages, use self.logger.debug(),.info(),.warn(),.error(),.critical()
+        #To log messages, use self.log() function
         
         self.logger = logging.getLogger('basic_logger')
         self.logger.setLevel(logging.DEBUG)
@@ -228,7 +228,28 @@ class Pyriod(object):
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
+        
+        self._log = widgets.HTML(
+            value='Log',
+            placeholder='Log',
+            description='Log:',
+            layout={'height': '100%',
+                    'width': '90%'}
+        )
+        self._logbox = widgets.VBox([self._log], layout={'height': '200px','width': '950px'})
     
+    
+    def log(self,message,level='info'):
+        logdict = {
+            'debug': self.logger.debug,
+            'info': self.logger.info,
+            'warn': self.logger.warn,
+            'error': self.logger.error,
+            'critical': self.logger.critical
+            }
+        logdict[level](message+'<br>')
+        self._update_log()
+        
         
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False, index=None):
@@ -245,7 +266,7 @@ class Pyriod(object):
         self.values = self.values.append(toappend,sort=False)
         self.signals_qgrid.df = self.values[self.columns[:6]]
         self._update_signal_markers()
-        self.logger.info("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
+        self.log("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
         
     #operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
     #             ast.Div: op.truediv,ast.USub: op.neg}
@@ -264,7 +285,7 @@ class Pyriod(object):
         if amp == None:
             amp = self.interpls(freqval)/1e3
         self.add_signal(freqval,amp,index=combostr)
-        self.logger.info("Combination {} added to model.".format(combostr))
+        self.log("Combination {} added to model.".format(combostr))
         
     
     def fit_model(self, *args):
@@ -327,7 +348,7 @@ class Pyriod(object):
         result = model.fit(self.lc.flux-np.mean(self.lc.flux), params, x=self.lc.time)
         
         self._update_values_from_fit(result.params,prefixmap)
-        self.logger.info("Fit refined.")
+        self.log("Fit refined.")
         
     def _update_values_from_fit(self,params,prefixmap):
         #update dataframe of params with new values from fit
@@ -385,7 +406,7 @@ class Pyriod(object):
                 logmessage += "New row in solution table: {}\n".format(key)
                 for col in newdf.loc[key]:
                     logmessage += " - {} -> {}\n".format(change,changes[change])
-        self.logger.info(logmessage)
+        self.log(logmessage)
         self.signals_qgrid.df = self.signals_qgrid.get_changed_df()
         self._update_values_from_qgrid()
     
@@ -450,7 +471,7 @@ class Pyriod(object):
                 self.add_combination(self._thisfreq.value)
             #Otherwise issue a warning
             else:
-                self.logger.error("Staged frequency has invalid format: {}".format(self._thisfreq.value))
+                self.log("Staged frequency has invalid format: {}".format(self._thisfreq.value),"error")
         
     #change type of time series being displayed
     def _update_lc_display(self, *args):
@@ -537,6 +558,9 @@ class Pyriod(object):
         display(self._refit,self.signals_qgrid)
         
     def Log(self):
-        print(self.log_capture_string.getvalue())
+        display(self._logbox)
+    
+    def _update_log(self):
+        self._log.value = self.log_capture_string.getvalue()
         
     
