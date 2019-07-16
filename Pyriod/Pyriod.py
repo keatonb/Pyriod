@@ -25,6 +25,7 @@ import itertools
 import re
 import pandas as pd
 from scipy.interpolate import interp1d
+import astropy.units as u
 import lightkurve as lk
 from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
@@ -102,7 +103,7 @@ class Pyriod(object):
         #self.uncertainties = pd.DataFrame(columns=self.columns[::2]) #not yet used
         
         #Compute periodogram
-        self.ls = self.lc.to_periodogram(normalization='amplitude',oversample_factor=10)/1e3
+        self.ls = self.lc.to_periodogram(normalization='amplitude',freq_unit=u.microHertz,oversample_factor=10)/1e3
         
         self.interpls = interp1d(self.ls.frequency.value,self.ls.power.value)
         self._init_periodogram_widgets()
