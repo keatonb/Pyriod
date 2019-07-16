@@ -61,7 +61,8 @@ class Pyriod(object):
 	Include flux uncertainties, units, etc.
     """
     id_generator = itertools.count(0)
-    def __init__(self, lc=None, time=None, flux=None):
+    def __init__(self, lc=None, time=None, flux=None, freq_unit=u.microHertz, 
+                 time_unit=u.day):
         self.id = next(self.id_generator)
         
         #Store light curve as LightKurve object
@@ -86,7 +87,8 @@ class Pyriod(object):
         self.lcplot, = self.lcax.plot(self.lc.time,self.lc.flux,marker='o',ls='None',ms=1)
         #Also plot the model over the time series
         dt = np.median(np.diff(self.lc.time))
-        self.lcmodel_timesample = np.arange(np.min(self.lc.time),np.max(self.lc.time)+dt,dt)
+        self.lcmodel_timesample = np.arange(np.min(self.lc.time),
+                                            np.max(self.lc.time)+dt,dt)
         self.lcmodel_model_sampled = np.zeros(len(self.lcmodel_timesample))+np.mean(self.lc.flux)
         self.lcmodel_model_observed = np.zeros(len(self.lc.time))+np.mean(self.lc.flux)
         self.lcmodel, = self.lcax.plot(self.lcmodel_timesample,self.lcmodel_model_sampled,c='r',lw=1)
@@ -104,6 +106,7 @@ class Pyriod(object):
         
         #Compute periodogram
         self.ls = self.lc.to_periodogram(normalization='amplitude',freq_unit=u.microHertz,oversample_factor=10)/1e3
+        self.unit_conversion = time_unit.to(1/freq_unit)
         
         self.interpls = interp1d(self.ls.frequency.value,self.ls.power.value)
         self._init_periodogram_widgets()
@@ -312,7 +315,7 @@ class Pyriod(object):
             if isindep(prefix):
                 signals[prefix] = Model(sin,prefix=prefix)
                 params.update(signals[prefix].make_params())
-                params[prefix+'freq'].set(self.values.freq[prefix], vary=False)
+                params[prefix+'freq'].set(self.unit_conversion*self.values.freq[prefix], vary=False)
                 params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
                 params[prefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
                 prefixmap[prefix] = prefix
@@ -357,7 +360,7 @@ class Pyriod(object):
         #isindep = lambda key: key[1:].isdigit()
         #cnum = 0
         for prefix in self.values.index:
-            self.values.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value)
+            self.values.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.unit_conversion)
             self.values.loc[prefix,'amp'] = params[prefixmap[prefix]+'amp'].value
             self.values.loc[prefix,'phase'] = params[prefixmap[prefix]+'phase'].value
             #rectify
@@ -383,10 +386,10 @@ class Pyriod(object):
             amp = float(self.values.loc[prefix,'amp'])
             phase = float(self.values.loc[prefix,'phase'])
             self.lcmodel_model_sampled += sin(self.lcmodel_timesample,
-                                              freq,amp,phase)
+                                              freq*self.unit_conversion,amp,phase)
             
             self.lcmodel_model_observed += sin(self.lc.time,
-                                               freq,amp,phase)
+                                               freq*self.unit_conversion,amp,phase)
         
         self._update_signal_markers()
         self._update_lc_display()
