@@ -528,7 +528,8 @@ class Pyriod(object):
             self.update_marker(event.xdata,self.interpls(event.xdata))
         
     def Periodogram(self):
-        display(self._pertype,self._recalculate,self._thisfreq,self._thisamp,
+        display(#self._pertype,
+                self._recalculate,self._thisfreq,self._thisamp,
                 self._addtosol,self._snaptopeak,self._showperiodsolution,
                 self.perfig)
         
