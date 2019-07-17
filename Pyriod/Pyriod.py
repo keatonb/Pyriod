@@ -290,7 +290,7 @@ class Pyriod(object):
             expression = expression.replace(key, str(self.values.loc[key,'freq']))
         freqval = eval(expression)
         if amp == None:
-            amp = self.interpls(subfreq(freqval,self.nyq))/1e3
+            amp = self.interpls(subfreq(freqval,self.nyq)[0])/1e3
         self.add_signal(freqval,amp,index=combostr)
         self.log("Combination {} added to model.".format(combostr))
         
@@ -532,8 +532,8 @@ class Pyriod(object):
             self.update_marker(event.xdata,self.interpls(event.xdata))
         
     def Periodogram(self):
-        display(#self._pertype,
-                self._recalculate,self._thisfreq,self._thisamp,
+        display(#self._pertype,self._recalculate,
+                self._thisfreq,self._thisamp,
                 self._addtosol,self._snaptopeak,self._showperiodsolution,
                 self.perfig)
         
