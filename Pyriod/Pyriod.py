@@ -128,7 +128,7 @@ class Pyriod(object):
         self.marker = self.perax.plot([0],[0],c='k',marker='o')[0]
         self.signal_marker_color = 'green'
         self.signal_markers, = self.perax.plot([],[],ls='none',marker='D',fillstyle='none',c='none',ms=5)
-        
+        self._makeperiodsolutionvisible()
         
         self.update_marker(self.ls.frequency.value[np.argmax(self.ls.power.value)],
                            np.max(self.ls.power.value))
@@ -205,9 +205,10 @@ class Pyriod(object):
         )
         
         self._showperiodsolution = widgets.Checkbox(
-            value=False,
+            value=True,
             description='Show frequencies in period solution?',
-            disabled=False
+            disabled=False,
+            style={'description_width': 'initial'}
         )
         self._showperiodsolution.observe(self._makeperiodsolutionvisible)
         
@@ -533,8 +534,9 @@ class Pyriod(object):
         
     def Periodogram(self):
         display(#self._pertype,self._recalculate,
-                self._thisfreq,self._thisamp,
-                self._addtosol,self._snaptopeak,self._showperiodsolution,
+                widgets.HBox([self._thisfreq,self._thisamp]),
+                self._addtosol,
+                widgets.HBox([self._snaptopeak,self._showperiodsolution]),
                 self.perfig)
         
     def TimeSeries(self):
