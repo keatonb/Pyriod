@@ -39,6 +39,8 @@ if sys.version_info < (3, 0):
 else:
     from io import StringIO
 
+from .pyquist import subfreq
+
 plt.ioff()
 
 #Definition of the basic model we fit
@@ -94,11 +96,6 @@ class Pyriod(object):
         self.lcmodel, = self.lcax.plot(self.lcmodel_timesample,self.lcmodel_model_sampled,c='r',lw=1)
         plt.tight_layout()
         
-        #Frequency resolution is important
-        self.fres = 1./(self.lc.time[-1]-self.lc.time[0])
-        #And the Nyquist (approximate for unevenly sampled data)
-        self.nyq = 1./(2.*dt)
-        
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
         self.values = self.initialize_dataframe()
         
@@ -107,6 +104,12 @@ class Pyriod(object):
         #Compute periodogram
         self.ls = self.lc.to_periodogram(normalization='amplitude',freq_unit=u.microHertz,oversample_factor=10)/1e3
         self.unit_conversion = time_unit.to(1/freq_unit)
+        
+        #Frequency resolution is important
+        self.fres = 1./(self.lc.time[-1]-self.lc.time[0])
+        #And the Nyquist (approximate for unevenly sampled data)
+        self.nyq = 1./(2.*dt*self.unit_conversion)
+        
         
         self.interpls = interp1d(self.ls.frequency.value,self.ls.power.value)
         self._init_periodogram_widgets()
@@ -287,7 +290,7 @@ class Pyriod(object):
             expression = expression.replace(key, str(self.values.loc[key,'freq']))
         freqval = eval(expression)
         if amp == None:
-            amp = self.interpls(freqval)/1e3
+            amp = self.interpls(subfreq(freqval,self.nyq))/1e3
         self.add_signal(freqval,amp,index=combostr)
         self.log("Combination {} added to model.".format(combostr))
         
@@ -492,7 +495,8 @@ class Pyriod(object):
         self.perfig.canvas.draw()
         
     def _update_signal_markers(self):
-        self.signal_markers.set_data(self.values['freq'].astype('float'),self.values['amp']*1e3)
+        subnyquistfreqs = subfreq(self.values['freq'].astype('float'),self.nyq)
+        self.signal_markers.set_data(subnyquistfreqs,self.values['amp']*1e3)
         self.perfig.canvas.draw()
         
     def _display_original_lc(self):
