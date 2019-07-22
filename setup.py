@@ -8,7 +8,7 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="Pyriod",
-    version="0.0.1",
+    version="0.0.2",
     author="Keaton Bell",
     author_email="keatonbell@utexas.edu",
     description="Sinusoid fitting for the astronomical time domain.",
