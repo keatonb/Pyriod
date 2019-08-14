@@ -98,6 +98,8 @@ class Pyriod(object):
         self.lcmodel, = self.lcax.plot(self.lcmodel_timesample,self.lcmodel_model_sampled,c='r',lw=1)
         plt.tight_layout()
         
+        self.residuals = self.lc.flux - self.lcmodel_model_observed
+        
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
         self.values = self.initialize_dataframe()
         
@@ -114,7 +116,7 @@ class Pyriod(object):
         
         #Compute periodogram
         self.ls = self.lc.to_periodogram(normalization='amplitude',freq_unit=u.microHertz,
-                                         frequency=self.freqs,oversample_factor=oversample_factor)/1e3
+                                         frequency=self.freqs)/1e3
         
         
         #Compute spectral window
@@ -406,6 +408,7 @@ class Pyriod(object):
             
             self.lcmodel_model_observed += sin(self.lc.time,
                                                freq*self.unit_conversion,amp,phase)
+        self.residuals = self.lc.flux - self.lcmodel_model_observed
         
         self._update_signal_markers()
         self._update_lc_display()
@@ -523,22 +526,40 @@ class Pyriod(object):
         self.lcfig.canvas.draw()
         
     def _display_residuals_lc(self):
-        self.lcplot.set_ydata(self.lc.flux-self.lcmodel_model_observed)
+        self.lcplot.set_ydata(self.residuals)
         self.lcmodel.set_ydata(np.zeros(len(self.lcmodel_timesample)))
-        ymin = np.min(self.lc.flux-self.lcmodel_model_observed)
-        ymax = np.max(self.lc.flux-self.lcmodel_model_observed)
+        ymin = np.min(self.residuals)
+        ymax = np.max(self.residuals)
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         self.lcfig.canvas.draw()
     
     def _update_per_display(self, *args):
         displaytype = self._pertype.value
         updatedisplay = {"Original":self._display_original_per,
+                         "Residuals":self._display_residuals_per,
+                         "Model":self._display_model_per,
                          "Window":self._display_spectral_window}
         updatedisplay[displaytype]()
     
     def _display_original_per(self):
         self.perplot.set_ydata(self.ls.power.value)
-        self.interpls = interp1d(self.ls.frequency.value,self.ls.power.value)
+        self.interpls = interp1d(self.freqs,self.ls.power.value)
+        #Show signal markers (if selected) and update canvas
+        self._makeperiodsolutionvisible()
+        
+    def _display_residuals_per(self):
+        residuals_per = lk.LightCurve(time=self.lc.time,flux=self.residuals+1.).to_periodogram(normalization='amplitude',
+                                     freq_unit=u.microHertz,frequency=self.freqs).power.value/1e3
+        self.perplot.set_ydata(residuals_per)
+        self.interpls = interp1d(self.freqs,residuals_per)
+        #Show signal markers (if selected) and update canvas
+        self._makeperiodsolutionvisible()
+    
+    def _display_model_per(self):
+        model_per = lk.LightCurve(time=self.lc.time,flux=self.lcmodel_model_observed).to_periodogram(normalization='amplitude',
+                                     freq_unit=u.microHertz,frequency=self.freqs).power.value/1e3
+        self.perplot.set_ydata(model_per)
+        self.interpls = interp1d(self.freqs,model_per)
         #Show signal markers (if selected) and update canvas
         self._makeperiodsolutionvisible()
         
