@@ -26,6 +26,7 @@ import re
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
+from astropy.stats import LombScargle
 import lightkurve as lk
 from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
@@ -64,8 +65,9 @@ class Pyriod(object):
     """
     id_generator = itertools.count(0)
     def __init__(self, lc=None, time=None, flux=None, freq_unit=u.microHertz, 
-                 time_unit=u.day):
+                 time_unit=u.day, oversample_factor=10):
         self.id = next(self.id_generator)
+        self.oversample_factor = oversample_factor
         
         #Store light curve as LightKurve object
         if lc is None and time is None and flux is None:
@@ -101,15 +103,24 @@ class Pyriod(object):
         
         #self.uncertainties = pd.DataFrame(columns=self.columns[::2]) #not yet used
         
-        #Compute periodogram
-        self.ls = self.lc.to_periodogram(normalization='amplitude',freq_unit=u.microHertz,oversample_factor=10)/1e3
+        #Put things in desired units
         self.unit_conversion = time_unit.to(1/freq_unit)
-        
-        #Frequency resolution is important
+        #Determine frequency resolution
         self.fres = 1./(self.lc.time[-1]-self.lc.time[0])
         #And the Nyquist (approximate for unevenly sampled data)
         self.nyq = 1./(2.*dt*self.unit_conversion)
+        #Sample the following frequencies:
+        self.freqs = np.arange(0,self.nyq+self.fres/oversample_factor,self.fres/oversample_factor)
         
+        #Compute periodogram
+        self.ls = self.lc.to_periodogram(normalization='amplitude',freq_unit=u.microHertz,
+                                         frequency=self.freqs,oversample_factor=oversample_factor)/1e3
+        
+        
+        #Compute spectral window
+        #May not work in Python3!!
+        self.specwin = np.sqrt(LombScargle(self.lc.time*self.unit_conversion, np.ones(self.lc.time.shape),
+                                           fit_mean=False).power(self.freqs,method = 'fast'))
         
         self.interpls = interp1d(self.ls.frequency.value,self.ls.power.value)
         self._init_periodogram_widgets()
@@ -133,7 +144,7 @@ class Pyriod(object):
         self.update_marker(self.ls.frequency.value[np.argmax(self.ls.power.value)],
                            np.max(self.ls.power.value))
         
-        self.perplot = self.perax.plot(self.ls.frequency.value,self.ls.power.value)
+        self.perplot, = self.perax.plot(self.ls.frequency.value,self.ls.power.value)
         #self.perfig.canvas.mpl_connect('button_press_event', self.onperiodogramclick)
         self.press= False
         self.move = False
@@ -161,6 +172,7 @@ class Pyriod(object):
             description='Periodogram to Display:',
             disabled=False,
         )
+        self._pertype.on_trait_change(self._update_per_display)
         
         self._thisfreq = widgets.Text(
             value='',
@@ -488,6 +500,7 @@ class Pyriod(object):
                          "Residuals":self._display_residuals_lc}
         updatedisplay[displaytype]()
         
+        
     def _makeperiodsolutionvisible(self, *args):
         if self._showperiodsolution.value:
             self.signal_markers.set_color(self.signal_marker_color)
@@ -517,23 +530,42 @@ class Pyriod(object):
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         self.lcfig.canvas.draw()
     
+    def _update_per_display(self, *args):
+        displaytype = self._pertype.value
+        updatedisplay = {"Original":self._display_original_per,
+                         "Window":self._display_spectral_window}
+        updatedisplay[displaytype]()
+    
+    def _display_original_per(self):
+        self.perplot.set_ydata(self.ls.power.value)
+        self.interpls = interp1d(self.ls.frequency.value,self.ls.power.value)
+        #Show signal markers (if selected) and update canvas
+        self._makeperiodsolutionvisible()
+        
+    def _display_spectral_window(self):
+        self.perplot.set_data(self.freqs,self.specwin)
+        self.interpls = interp1d(self.ls.frequency.value,self.specwin)
+        #Hide signal markers
+        self.signal_markers.set_color('none')
+        self.perfig.canvas.draw()
     
     def onperiodogramclick(self,event):
         if self._snaptopeak.value:
-            freqs = self.ls.frequency.value
             #click within either frequency resolution or 1% of displayed range
             #TODO: make this work with log frequency too
             tolerance = np.max([self.fres,0.01*np.diff(self.perax.get_xlim())])
             
-            nearby = np.argwhere((freqs >= event.xdata - tolerance) & 
-                                 (freqs <= event.xdata + tolerance))
-            highestind = np.argmax(self.ls.power.value[nearby]) + nearby[0]
-            self.update_marker(freqs[highestind],self.ls.power.value[highestind])
+            nearby = np.argwhere((self.freqs >= event.xdata - tolerance) & 
+                                 (self.freqs <= event.xdata + tolerance))
+            ydata = self.perplot.get_ydata()
+            highestind = np.nanargmax(ydata[nearby]) + nearby[0]
+            self.update_marker(self.freqs[highestind],ydata[highestind])
         else:
             self.update_marker(event.xdata,self.interpls(event.xdata))
         
     def Periodogram(self):
         display(#self._pertype,self._recalculate,
+                self._pertype,
                 widgets.HBox([self._thisfreq,self._thisamp]),
                 self._addtosol,
                 widgets.HBox([self._snaptopeak,self._showperiodsolution]),
