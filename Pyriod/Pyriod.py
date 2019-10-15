@@ -412,6 +412,7 @@ class Pyriod(object):
         
         self._update_signal_markers()
         self._update_lc_display()
+        self._update_per_display()
     
     def _qgrid_changed_manually(self, *args):
         #note: args has information about what changed if needed
@@ -565,6 +566,7 @@ class Pyriod(object):
         
     def _display_spectral_window(self):
         self.perplot.set_data(self.freqs,self.specwin)
+        self.perax.set_ylim(-0.03,1.03)
         self.interpls = interp1d(self.ls.frequency.value,self.specwin)
         #Hide signal markers
         self.signal_markers.set_color('none')
