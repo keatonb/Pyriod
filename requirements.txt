@@ -4,5 +4,6 @@ scipy
 lightkurve
 lmfit
 matplotlib
+ipympl
 ipywidgets
 qgrid
