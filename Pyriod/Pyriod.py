@@ -145,6 +145,9 @@ class Pyriod(object):
         else:
             self.lc_orig = lk.LightCurve(time=time, flux=flux)
         
+        #Apply time shift to get phases to be well behaved
+        self.tshift = -np.mean(self.lc_orig.time)
+        
         #Initialize time series widgets and plots
         self._init_timeseries_widgets()
         self.lcfig,self.lcax = plt.subplots(figsize=(6,2),num='Time Series ({:d})'.format(self.id))
@@ -540,7 +543,7 @@ class Pyriod(object):
         model = np.sum([signals[prefixmap[prefix]] for prefix in self.values.index])
         
         #compute fixed-frequency fit
-        result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time)
+        result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time+self.tshift)
         
         #refine, allowing freq to vary (unless fixed by user)
         params = result.params
@@ -551,7 +554,7 @@ class Pyriod(object):
                 params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
                 params[prefixmap[prefix]+'phase'].set(result.params[prefixmap[prefix]+'phase'].value)
                 
-        result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time)
+        result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time+self.tshift)
         
         self._update_values_from_fit(result.params,prefixmap)
         self.log("Fit refined.")
@@ -569,6 +572,8 @@ class Pyriod(object):
             if self.values.loc[prefix,'amp'] < 0:
                 self.values.loc[prefix,'amp'] *= -1.
                 self.values.loc[prefix,'phase'] -= 0.5
+            #Reference phase to t0
+            self.values.loc[prefix,'phase'] += self.tshift*self.values.loc[prefix,'freq']*self.freq_conversion
             self.values.loc[prefix,'phase'] %= 1.
             
         #update qgrid
