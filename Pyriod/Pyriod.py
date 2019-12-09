@@ -279,20 +279,10 @@ class Pyriod(object):
             description='Time Series to Display:',
             disabled=False
         )
-        self._tstype.on_trait_change(self._update_lc_display)
+        self._tstype.observe(self._update_lc_display)
     
     def _init_periodogram_widgets(self):
         ### Periodogram widget stuff  ###
-        """
-        self._pertype = widgets.Dropdown(
-            options=['Original', 'Residuals', 'Model', 'Window'],
-            value='Original',
-            description='Periodogram to Display:',
-            disabled=False,
-        )
-        
-        self._pertype.on_trait_change(self._update_per_display)
-        """
         self._thisfreq = widgets.Text(
             value='',
             placeholder='',
