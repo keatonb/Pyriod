@@ -52,8 +52,6 @@ What to do about units:
 Decide:
     interppls exists only for inferring amplitude guesses for combo frequencies
 
-TODO: (Important) define time zero for ts
-
 TODO: Generate model light curves from lmfit model always (including initialization)
 
 TODO: Table interactions: save, load, delete rows
