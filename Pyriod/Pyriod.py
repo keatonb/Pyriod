@@ -596,8 +596,11 @@ class Pyriod(object):
         #cnum = 0
         for prefix in self.values.index[self.values.include]:
             self.values.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.freq_conversion)
+            self.values.loc[prefix,'freqerr'] = float(params[prefixmap[prefix]+'freq'].stderr/self.freq_conversion)
             self.values.loc[prefix,'amp'] = params[prefixmap[prefix]+'amp'].value
+            self.values.loc[prefix,'amperr'] = float(params[prefixmap[prefix]+'amp'].stderr)
             self.values.loc[prefix,'phase'] = params[prefixmap[prefix]+'phase'].value
+            self.values.loc[prefix,'phaseerr'] = float(params[prefixmap[prefix]+'phase'].stderr)
             #rectify
             if self.values.loc[prefix,'amp'] < 0:
                 self.values.loc[prefix,'amp'] *= -1.
