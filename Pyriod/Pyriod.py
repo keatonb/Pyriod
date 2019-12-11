@@ -414,15 +414,15 @@ class Pyriod(object):
                }
         
         self._column_definitions = {"include":  {'width': 65, 'toolTip': "include signal in model fit?"},
-                                    "freq":      {'width': 150, 'toolTip': "mode frequency"},
+                                    "freq":      {'width': 130, 'toolTip': "mode frequency"},
                                     "fixfreq":  {'width': 65, 'toolTip': "fix frequency during fit?"},
-                                    "freqerr":  {'width': 65, 'toolTip': "uncertainty on frequency"},
-                                    "amp":       {'width': 150, 'toolTip': "mode amplitude"},
+                                    "freqerr":  {'width': 130, 'toolTip': "uncertainty on frequency", 'editable': False},
+                                    "amp":       {'width': 130, 'toolTip': "mode amplitude"},
                                     "fixamp":   {'width': 65, 'toolTip': "fix amplitude during fit?"},
-                                    "amperr":  {'width': 65, 'toolTip': "uncertainty on amplitude"},
-                                    "phase":     {'width': 150, 'toolTip': "mode phase"},
+                                    "amperr":  {'width': 130, 'toolTip': "uncertainty on amplitude", 'editable': False},
+                                    "phase":     {'width': 130, 'toolTip': "mode phase"},
                                     "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
-                                    "phaseerr":  {'width': 65, 'toolTip': "uncertainty on phase"}}
+                                    "phaseerr":  {'width': 130, 'toolTip': "uncertainty on phase", 'editable': False}}
     
     def _init_signals_widgets(self):
         ### Time Series widget stuff  ###
@@ -440,7 +440,7 @@ class Pyriod(object):
             disabled=False,
             button_style='danger', # 'success', 'info', 'warning', 'danger' or ''
             tooltip='Delete selected rows.',
-            icon='trash_alt'
+            icon='trash'
         )
         self._delete.on_click(self._delete_selected)
     
@@ -620,11 +620,13 @@ class Pyriod(object):
     def _convert_values_to_qgrid(self):
         tempdf = self.values.copy()[self.columns[:-1]]
         tempdf["amp"] *= self.amp_conversion
+        tempdf["amperr"] *= self.amp_conversion
         return tempdf
     
     def _convert_qgrid_to_values(self):
         tempdf = self.signals_qgrid.get_changed_df().copy()
         tempdf["amp"] /= self.amp_conversion
+        tempdf["amperr"] /= self.amp_conversion
         return tempdf
     
     def _update_values_from_qgrid(self):# *args
@@ -717,7 +719,8 @@ class Pyriod(object):
     def get_qgrid(self):
         display_df = self.values[self.columns[:-1]].copy()
         display_df["amp"] *= self.amp_conversion
-        return qgrid.show_grid(display_df, show_toolbar=False, precision = 10,
+        display_df["amperr"] *= self.amp_conversion
+        return qgrid.show_grid(display_df, show_toolbar=False, precision = 9,
                                grid_options=self._gridoptions,
                                column_definitions=self._column_definitions)
     
