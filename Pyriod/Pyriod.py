@@ -56,6 +56,8 @@ TODO: Generate model light curves from lmfit model always (including initializat
 
 TODO: Table interactions: save, load, delete rows
 
+TODO: Show smoothed light curve (and when folded)
+
 TODO: (re-)generate all periodograms in function
 
 TODO: Fold time series at frequency
@@ -191,6 +193,7 @@ class Pyriod(object):
         
         #Determine frequency resolution
         self.fres = 1./(self.lc_orig.time[-1]-self.lc_orig.time[0])
+        self._fold_on.step = self.fres #let fold_on step by freq res
         #And the Nyquist (approximate for unevenly sampled data)
         self.nyq = 1./(2.*dt*self.freq_conversion)
         #Sample the following frequencies:
@@ -280,6 +283,24 @@ class Pyriod(object):
             disabled=False
         )
         self._tstype.observe(self._update_lc_display)
+        
+        self._fold = widgets.Checkbox(
+            value=False,
+            description='Fold time series on frequency?',
+        )
+        self._fold.observe(self._update_lc_display)
+        
+        self._fold_on = widgets.FloatText(
+            value=1.,
+            description='Fold on freq:'
+        )
+        self._fold_on.observe(self._update_lc_display)
+        
+        self._select_fold_freq = widgets.Dropdown(
+            description='Select from:',
+            disabled=False,
+        )
+        self._select_fold_freq.observe(self._fold_freq_selected,'value')
     
     def _init_periodogram_widgets(self):
         ### Periodogram widget stuff  ###
@@ -373,7 +394,7 @@ class Pyriod(object):
                 'fullWidthRows': True,
                 'syncColumnCellResize': True,
                 'forceFitColumns': False,
-                'defaultColumnWidth': 150,  #control col width (all the same)
+                'defaultColumnWidth': 65,  #control col width (all the same)
                 'rowHeight': 28,
                 'enableColumnReorder': False,
                 'enableTextSelectionOnCells': True,
@@ -391,12 +412,16 @@ class Pyriod(object):
                 'highlightSelectedRow': True
                }
         
-        self._column_definitions = {"freq":      {'width': 150, 'toolTip': "mode frequency"},
+        self._column_definitions = {"include":  {'width': 65, 'toolTip': "include signal in model fit?"},
+                                    "freq":      {'width': 150, 'toolTip': "mode frequency"},
                                     "fixfreq":  {'width': 65, 'toolTip': "fix frequency during fit?"},
+                                    "freqerr":  {'width': 65, 'toolTip': "uncertainty on frequency"},
                                     "amp":       {'width': 150, 'toolTip': "mode amplitude"},
                                     "fixamp":   {'width': 65, 'toolTip': "fix amplitude during fit?"},
+                                    "amperr":  {'width': 65, 'toolTip': "uncertainty on amplitude"},
                                     "phase":     {'width': 150, 'toolTip': "mode phase"},
-                                    "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"}}
+                                    "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
+                                    "phaseerr":  {'width': 65, 'toolTip': "uncertainty on phase"}}
     
     def _init_signals_widgets(self):
         ### Time Series widget stuff  ###
@@ -447,21 +472,25 @@ class Pyriod(object):
     
     #Functions for interacting with model fit
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
-                   fixamp=False, fixphase=False, index=None):
+                   fixamp=False, fixphase=False, include=True, index=None):
         if amp is None:
             amp = 1.
         if phase is None:
             phase = 0.5
         #list of iterables required to pass to dataframe without an index
-        newvalues = [[nv] for nv in [freq,fixfreq,amp/self.amp_conversion,fixamp,phase,fixphase]]
+        newvalues = [[nv] for nv in [freq,fixfreq,amp/self.amp_conversion,fixamp,phase,fixphase,include]]
+        colnames = ["freq","fixfreq","amp","fixamp","phase","fixphase","include"]
         if index == None:
+            #TODO: fix numbering to find next indep frequency number
             index = "f{}".format(len(self.values))
-        toappend = pd.DataFrame(dict(zip(self.columns,newvalues)),columns=self.columns,
+        toappend = pd.DataFrame(dict(zip(colnames,newvalues)),columns=self.columns,
                                 index=[index])
         self.values = self.values.append(toappend,sort=False)
-        displayframe = self.values.copy()[self.columns[:6]]
+        self._update_freq_dropdown() #For folding time series
+        displayframe = self.values.copy()[self.columns[:-1]]
         displayframe["amp"] = displayframe["amp"] * self.amp_conversion
-        self.signals_qgrid.df = displayframe
+        self.signals_qgrid.df = displayframe.combine_first(self.signals_qgrid.df)[self.columns[:-1]] #Update displayed values
+        #self.signals_qgrid.df.columns = self.columns[:-1]
         self._update_signal_markers()
         self.log("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
         
@@ -491,6 +520,9 @@ class Pyriod(object):
         
         Improve fit once with all frequencies fixed, then allow to vary.
         """
+        if np.sum(self.values.include.values) == 0:
+            return #If nothing to fit
+        
         #Set up lmfit model for fitting
         signals = {} #empty dict to be populated
         params = Parameters()
@@ -502,33 +534,34 @@ class Pyriod(object):
         prefixmap = {}
         
         #first with frequencies fixed
-        for prefix in self.values.index:
+        #for those specified to be included in the model
+        for prefix in self.values.index[self.values.include]:
             #prefix = 'f{}'.format(i+1)
             #freqkeys.append(prefix)
-            if isindep(prefix):
-                signals[prefix] = Model(sin,prefix=prefix)
-                params.update(signals[prefix].make_params())
-                params[prefix+'freq'].set(self.freq_conversion*self.values.freq[prefix], vary=False)
-                params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
-                params[prefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
-                prefixmap[prefix] = prefix
-            else: #combination
-                useprefix = 'c{}'.format(cnum)
-                signals[useprefix] = Model(sin,prefix=useprefix)
-                params.update(signals[useprefix].make_params())
-                parts = re.split('\+|\-|\*|\/',prefix)
-                keys = set([part for part in parts if part in self.values.index])
-                expression = prefix
-                for key in keys:
-                    expression = expression.replace(key, key+'freq')
-                params[useprefix+'freq'].set(expr=expression)
-                params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
-                params[useprefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
-                prefixmap[prefix] = useprefix
-                cnum+=1
+                if isindep(prefix):
+                    signals[prefix] = Model(sin,prefix=prefix)
+                    params.update(signals[prefix].make_params())
+                    params[prefix+'freq'].set(self.freq_conversion*self.values.freq[prefix], vary=False)
+                    params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+                    params[prefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
+                    prefixmap[prefix] = prefix
+                else: #combination
+                    useprefix = 'c{}'.format(cnum)
+                    signals[useprefix] = Model(sin,prefix=useprefix)
+                    params.update(signals[useprefix].make_params())
+                    parts = re.split('\+|\-|\*|\/',prefix)
+                    keys = set([part for part in parts if part in self.values.index])
+                    expression = prefix
+                    for key in keys:
+                        expression = expression.replace(key, key+'freq')
+                    params[useprefix+'freq'].set(expr=expression)
+                    params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+                    params[useprefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
+                    prefixmap[prefix] = useprefix
+                    cnum+=1
         
         #model is sum of sines
-        model = np.sum([signals[prefixmap[prefix]] for prefix in self.values.index])
+        model = np.sum([signals[prefixmap[prefix]] for prefix in self.values.index[self.values.include]])
         
         #compute fixed-frequency fit
         result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time+self.tshift)
@@ -536,7 +569,7 @@ class Pyriod(object):
         #refine, allowing freq to vary (unless fixed by user)
         params = result.params
         
-        for prefix in self.values.index:
+        for prefix in self.values.index[self.values.include]:
             if isindep(prefix):
                 params[prefixmap[prefix]+'freq'].set(vary=~self.values.fixfreq[prefix])
                 params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
@@ -552,7 +585,7 @@ class Pyriod(object):
         #also rectify and negative amplitudes or phases outside [0,1)
         #isindep = lambda key: key[1:].isdigit()
         #cnum = 0
-        for prefix in self.values.index:
+        for prefix in self.values.index[self.values.include]:
             self.values.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.freq_conversion)
             self.values.loc[prefix,'amp'] = params[prefixmap[prefix]+'amp'].value
             self.values.loc[prefix,'phase'] = params[prefixmap[prefix]+'phase'].value
@@ -563,15 +596,17 @@ class Pyriod(object):
             #Reference phase to t0
             self.values.loc[prefix,'phase'] += self.tshift*self.values.loc[prefix,'freq']*self.freq_conversion
             self.values.loc[prefix,'phase'] %= 1.
-            
+        self._update_freq_dropdown()
+        
         #update qgrid
-        self.signals_qgrid.df = self._convert_values_to_qgrid()
+        self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
+        #self.signals_qgrid.df = self._convert_values_to_qgrid()[self.columns[:-1]]
         #TODO: also update uncertainties
         
-        self._update_values_from_qgrid()
+        self._update_values_from_qgrid() #Necessary?
     
     def _convert_values_to_qgrid(self):
-        tempdf = self.values.copy()[self.columns[:6]]
+        tempdf = self.values.copy()[self.columns[:-1]]
         tempdf["amp"] *= self.amp_conversion
         return tempdf
     
@@ -587,8 +622,6 @@ class Pyriod(object):
         self._update_signal_markers()
         self._update_lc_display()
         self._update_pers()
-        #self._display_per_resid()#Temporary
-        #self._update_per_display()
         
     def _update_lcs(self):
         #Update time series models
@@ -622,24 +655,41 @@ class Pyriod(object):
                 for col in newdf.loc[key]:
                     logmessage += " - {} -> {}\n".format(change,changes[change])
         self.log(logmessage)
-        self.signals_qgrid.df = self.signals_qgrid.get_changed_df()
+        self.signals_qgrid.df = self.signals_qgrid.get_changed_df().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
+        #self.signals_qgrid.df.columns = self.columns[:-1]
         self._update_values_from_qgrid()
     
-    columns = ['freq','fixfreq','amp','fixamp','phase','fixphase','combo']
-    dtypes = ['object','bool','float','bool','float','bool','bool']
+    columns = ['include','freq','fixfreq','freqerr',
+               'amp','fixamp','amperr',
+               'phase','fixphase','phaseerr','combo']
+    dtypes = ['bool','object','bool','float',
+              'float','bool','float',
+              'float','bool','float','bool']
     
     def initialize_dataframe(self):
         df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
         return df
     
     
+    #Stuff for folding the light curve on a certain frequency
+    def _fold_freq_selected(self,value):
+        self._fold_on.value = value['new']
+        
+    def _update_freq_dropdown(self):
+        labels = [self.values.index[i] + ': {:.8f} '.format(self.values.freq[i]) + self.per_orig.frequency.unit.to_string() for i in range(len(self.values))]
+        currentind = self._select_fold_freq.index
+        if currentind == None:
+            currentind = 0
+        self._select_fold_freq.options = zip(labels, self.values.freq.values)
+        self._select_fold_freq.index = currentind
+        
     ########## Set up *SIGNALS* widget using qgrid ##############
     
     
         
     
     def get_qgrid(self):
-        display_df = self.values[self.columns[:6]].copy()
+        display_df = self.values[self.columns[:-1]].copy()
         display_df["amp"] *= self.amp_conversion
         return qgrid.show_grid(display_df, show_toolbar=False, precision = 10,
                                grid_options=self._gridoptions,
@@ -681,6 +731,15 @@ class Pyriod(object):
         ymin = np.min([np.min(self.lc_orig.flux),np.min(self.lc_model_sampled.flux)])
         ymax = np.max([np.max(self.lc_orig.flux),np.max(self.lc_model_sampled.flux)])
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
+        #fold if requested
+        if self._fold.value:
+            self.lcplot_orig.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
+            self.lcplot_model.set_alpha(0)
+            self.lcax.set_xlim(0,1)
+        else:
+            self.lcplot_orig.set_xdata(self.lc_orig.time)
+            self.lcplot_model.set_alpha(1)
+            self.lcax.set_xlim(np.min(self.lc_orig.time),np.max(self.lc_orig.time))
         self.lcfig.canvas.draw()
         
     def _display_residuals_lc(self):
@@ -689,6 +748,15 @@ class Pyriod(object):
         ymin = np.min(self.lc_resid.flux)
         ymax = np.max(self.lc_resid.flux)
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
+        #fold if requested
+        if self._fold.value:
+            self.lcplot_orig.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
+            self.lcplot_model.set_alpha(0)
+            self.lcax.set_xlim(0,1)
+        else:
+            self.lcplot_orig.set_xdata(self.lc_orig.time)
+            self.lcplot_model.set_alpha(1)
+            self.lcax.set_xlim(np.min(self.lc_orig.time),np.max(self.lc_orig.time))
         self.lcfig.canvas.draw()
     
     
@@ -766,7 +834,8 @@ class Pyriod(object):
         
         
     def TimeSeries(self):
-        return VBox([self._tstype,self.lcfig.canvas])
+        return VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,
+                     self.lcfig.canvas])
         #display(self._tstype,self.lcfig)
         
     def update_marker(self,x,y):
