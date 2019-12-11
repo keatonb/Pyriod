@@ -321,14 +321,15 @@ class Pyriod(object):
             disabled=False
         )
         
+        ##Needed???
+        #self._recalculate = widgets.Button(
+        #    description='Recalculate',
+        #    disabled=True,
+        #    button_style='', # 'success', 'info', 'warning', 'danger' or ''
+        #    tooltip='Click to recalculate periodogram based on updated solution.',
+        #    icon='refresh'
+        #)
         
-        self._recalculate = widgets.Button(
-            description='Recalculate',
-            disabled=True,
-            button_style='', # 'success', 'info', 'warning', 'danger' or ''
-            tooltip='Click to recalculate periodogram based on updated solution.',
-            icon='refresh'
-        )
         
         
         self._addtosol = widgets.Button(
@@ -434,6 +435,14 @@ class Pyriod(object):
         )
         self._refit.on_click(self.fit_model)
         
+        self._delete = widgets.Button(
+            description='Delete selected',
+            disabled=False,
+            button_style='danger', # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Delete selected rows.',
+            icon='trash_alt'
+        )
+        self._delete.on_click(self._delete_selected)
     
         
     def _init_log(self):
@@ -666,6 +675,15 @@ class Pyriod(object):
               'float','bool','float',
               'float','bool','float','bool']
     
+    def delete_rows(self,indices):
+        self.values = self.values.drop(indices)
+        self.signals_qgrid.df = self.signals_qgrid.df.drop(indices)
+    
+    def _delete_selected(self, *args):
+        self.delete_rows(self.signals_qgrid.get_selected_df().index)
+        self._update_freq_dropdown()
+        self._update_signal_markers()
+    
     def initialize_dataframe(self):
         df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
         return df
@@ -673,15 +691,20 @@ class Pyriod(object):
     
     #Stuff for folding the light curve on a certain frequency
     def _fold_freq_selected(self,value):
-        self._fold_on.value = value['new']
+        if value['new'] is not None:
+            self._fold_on.value = value['new']
         
     def _update_freq_dropdown(self):
         labels = [self.values.index[i] + ': {:.8f} '.format(self.values.freq[i]) + self.per_orig.frequency.unit.to_string() for i in range(len(self.values))]
         currentind = self._select_fold_freq.index
         if currentind == None:
             currentind = 0
-        self._select_fold_freq.options = zip(labels, self.values.freq.values)
-        self._select_fold_freq.index = currentind
+        if len(labels) == 0:
+            self._select_fold_freq.options = [None]
+        else:
+            self._select_fold_freq.options = zip(labels, self.values.freq.values)
+            self._select_fold_freq.index = currentind
+        
         
     ########## Set up *SIGNALS* widget using qgrid ##############
     
@@ -862,7 +885,7 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
-        display(widgets.HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol]),self.signals_qgrid)
+        display(widgets.HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),self.signals_qgrid)
         
     def Log(self):
         display(self._logbox)
