@@ -314,22 +314,9 @@ class Pyriod(object):
         
         self._thisamp = widgets.FloatText(
             value=0.001,
-            #min=0,
-            #max=np.max(amp),
-            #step=None,
             description='Amplitude:',
             disabled=False
         )
-        
-        ##Needed???
-        #self._recalculate = widgets.Button(
-        #    description='Recalculate',
-        #    disabled=True,
-        #    button_style='', # 'success', 'info', 'warning', 'danger' or ''
-        #    tooltip='Click to recalculate periodogram based on updated solution.',
-        #    icon='refresh'
-        #)
-        
         
         
         self._addtosol = widgets.Button(
@@ -443,6 +430,32 @@ class Pyriod(object):
             icon='trash'
         )
         self._delete.on_click(self._delete_selected)
+        
+        self._file_location = widgets.Text(
+            value='Pyriod_solution.csv',
+            placeholder='csv file to read/write',
+            tooltip='Path of csv file to write to or read from.',
+            description='File location:',
+            disabled=False
+        )
+                
+        self._save = widgets.Button(
+            description="Save",
+            disabled=False,
+            #button_style='success', # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Save solution to csv file.',
+            icon='save'
+        )
+        self._save.on_click(self._save_button_click)
+        
+        self._load = widgets.Button(
+            description="Load",
+            disabled=False,
+            #button_style='success', # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Load solution from csv file.',
+            icon='load'
+        )
+        self._load.on_click(self._load_button_click)
     
         
     def _init_log(self):
@@ -891,7 +904,9 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
-        display(widgets.HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),self.signals_qgrid)
+        display(widgets.HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
+                self.signals_qgrid,
+                widgets.HBox([self._save,self._load,self._file_location]))
         
     def Log(self):
         display(self._logbox)
@@ -899,4 +914,17 @@ class Pyriod(object):
     def _update_log(self):
         self._log.value = self.log_capture_string.getvalue()
         
+    def save_solution(self,filename='Pyriod_solution.csv'):
+        self.signals_qgrid.df.to_csv(filename,index_label='label')
+        
+    def _save_button_click(self, *args):
+        self.save_solution(filename=self._file_location.value)
     
+    def load_solution(self,filename='Pyriod_solution.csv'):
+        loaddf = pd.read_csv(filename,index_col='label')
+        loaddf.index = loaddf.index.rename(None)
+        self.signals_qgrid.df = loaddf
+        self._qgrid_changed_manually()
+        
+    def _load_button_click(self, *args):
+        self.load_solution(filename=self._file_location.value)
