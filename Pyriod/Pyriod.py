@@ -204,7 +204,7 @@ class Pyriod(object):
                                                frequency=self.freqs)*self.amp_conversion
         self.perplot_orig, = self.perax.plot(self.freqs,self.per_orig.power.value,lw=1)
         self.perax.set_xlabel("frequency ({})".format(self.per_orig.frequency.unit.to_string()))
-        self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value))
+        self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value[np.isfinite(self.per_orig.power.value)]))
         
         #Compute and plot periodogram of model sampled as observed
         self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
