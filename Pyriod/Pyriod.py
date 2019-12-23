@@ -165,7 +165,7 @@ class Pyriod(object):
         
         self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time,
                                             self.lc_model_sampled.flux,c='r',lw=1)
-        plt.tight_layout()
+        #plt.tight_layout()
         
         #And keep track of residuals time series
         self.lc_resid = self.lc_orig - self.lc_model_observed
@@ -186,7 +186,7 @@ class Pyriod(object):
         self.perfig,self.perax = plt.subplots(figsize=(6,3),num='Periodogram ({:d})'.format(self.id))
         self.perax.set_xlabel("frequency")
         self.perax.set_ylabel("amplitude ({})".format(self.amp_unit))
-        plt.tight_layout()
+        #plt.tight_layout()
         
         
         #Define frequency sampling
@@ -206,6 +206,7 @@ class Pyriod(object):
         self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1)
         self.perax.set_xlabel("frequency ({})".format(self.per_orig.frequency.unit.to_string()))
         self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value))
+        self.perax.set_xlim(np.min(self.freqs),np.max(self.freqs))
         
         #Compute and plot periodogram of model sampled as observed
         self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
