@@ -12,7 +12,7 @@ or use
 
 This code uses [Qgrid](https://github.com/quantopian/qgrid) to interactively display the frequency solution.  
 
-To display the Qgrid table widgets as part of the Period GUI, you will need to first enable the following Jupyter notebook extensions in the terminal:
+To display the Qgrid table widgets as part of the Pyriod GUI, you will need to first enable the following Jupyter notebook extensions in the terminal:
 ```
 jupyter nbextension enable --py --sys-prefix qgrid
 jupyter nbextension enable --py --sys-prefix widgetsnbextension
