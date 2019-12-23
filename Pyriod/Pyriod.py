@@ -80,7 +80,7 @@ from astropy.stats import LombScargle
 import lightkurve as lk
 from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
-from IPython.display import display
+#from IPython.display import display
 import matplotlib.pyplot as plt 
 import ipywidgets as widgets
 from ipywidgets import HBox,VBox
@@ -203,7 +203,7 @@ class Pyriod(object):
         self.per_orig = self.lc_orig.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
                                                frequency=self.freqs)*self.amp_conversion
         self.per_orig = self.per_orig[np.isfinite(self.per_orig.power.value)] #remove infinities
-        self.perplot_orig, = self.perax.plot(self.freqs,self.per_orig.power.value,lw=1)
+        self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1)
         self.perax.set_xlabel("frequency ({})".format(self.per_orig.frequency.unit.to_string()))
         self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value))
         
@@ -225,7 +225,7 @@ class Pyriod(object):
         #self.perplot_sw, = self.perax.plot(self.freqs,self.specwin,lw=1)
         
         #Is the following truly needed?
-        self.interpls = interp1d(self.freqs,self.per_orig.power.value)
+        self.interpls = interp1d(self.per_orig.frequency.value,self.per_orig.power.value)
         
         #Create markers for selected peak, adopted signals
         self.marker = self.perax.plot([0],[0],c='k',marker='o')[0]
@@ -385,7 +385,7 @@ class Pyriod(object):
                 'forceFitColumns': False,
                 'defaultColumnWidth': 65,  #control col width (all the same)
                 'rowHeight': 28,
-                'enableColumnReorder': False,
+                'enableColumnReorder': True,
                 'enableTextSelectionOnCells': True,
                 'editable': True,
                 'autoEdit': True, #double-click not required!
@@ -404,13 +404,13 @@ class Pyriod(object):
         self._column_definitions = {"include":  {'width': 65, 'toolTip': "include signal in model fit?"},
                                     "freq":      {'width': 130, 'toolTip': "mode frequency"},
                                     "fixfreq":  {'width': 65, 'toolTip': "fix frequency during fit?"},
-                                    "freqerr":  {'width': 130, 'toolTip': "uncertainty on frequency", 'editable': False},
+                                    "freqerr":  {'width': 120, 'toolTip': "uncertainty on frequency", 'editable': False},
                                     "amp":       {'width': 130, 'toolTip': "mode amplitude"},
                                     "fixamp":   {'width': 65, 'toolTip': "fix amplitude during fit?"},
-                                    "amperr":  {'width': 130, 'toolTip': "uncertainty on amplitude", 'editable': False},
+                                    "amperr":  {'width': 120, 'toolTip': "uncertainty on amplitude", 'editable': False},
                                     "phase":     {'width': 130, 'toolTip': "mode phase"},
                                     "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
-                                    "phaseerr":  {'width': 130, 'toolTip': "uncertainty on phase", 'editable': False}}
+                                    "phaseerr":  {'width': 120, 'toolTip': "uncertainty on phase", 'editable': False}}
     
     def _init_signals_widgets(self):
         ### Time Series widget stuff  ###
@@ -880,6 +880,25 @@ class Pyriod(object):
         return VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,
                      self.lcfig.canvas])
         #display(self._tstype,self.lcfig)
+    
+    #This one shows all the tabs
+    def Pyriod(self):
+        tstab = self.TimeSeries()
+        pertab1 = VBox([widgets.HBox([self._thisfreq,self._thisamp]),
+                        self._addtosol,
+                        self.perfig.canvas])
+        pertab2 = VBox([self._snaptopeak,self._show_per_markers,
+                        self._show_per_orig,self._show_per_resid,
+                        self._show_per_model,self._show_per_sw])
+        signalstab = self.Signals()
+        logtab = self.Log()
+        tabs = widgets.Tab(children=[tstab,pertab1,pertab2,signalstab,logtab])
+        tabs.set_title(0, 'Time Series')
+        tabs.set_title(1, 'Periodogram')
+        tabs.set_title(2, 'Options')
+        tabs.set_title(3, 'Signals')
+        tabs.set_title(4, 'Log')
+        return tabs
         
     def update_marker(self,x,y):
         try:
@@ -905,12 +924,12 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
-        display(widgets.HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
+        return widgets.VBox([widgets.HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
                 self.signals_qgrid,
-                widgets.HBox([self._save,self._load,self._file_location]))
+                widgets.HBox([self._save,self._load,self._file_location])])
         
     def Log(self):
-        display(self._logbox)
+        return self._logbox
     
     def _update_log(self):
         self._log.value = self.log_capture_string.getvalue()
