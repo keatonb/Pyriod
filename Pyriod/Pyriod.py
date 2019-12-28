@@ -10,10 +10,14 @@ For more, see https://github.com/keatonb/Pyriod
 
 ---------------------
 
-# Distinguish clicks with drag motions
-# From ImportanceOfBeingErnest
-# https://stackoverflow.com/questions/48446351/distinguish-button-press-event-from-drag-and-zoom-clicks-in-matplotlib
-    
+The following code was stolen from stackoverflow:
+
+Distinguish clicks with drag motions from ImportanceOfBeingErnest
+https://stackoverflow.com/a/48452190
+
+Capturing print output from kindall
+https://stackoverflow.com/a/16571630
+
 ---------------------
 
 Below here are just some author's notes to keep track of style decisions.
@@ -54,13 +58,9 @@ Decide:
 
 TODO: Generate model light curves from lmfit model always (including initialization)
 
-TODO: Table interactions: save, load, delete rows
-
 TODO: Show smoothed light curve (and when folded)
 
 TODO: (re-)generate all periodograms in function
-
-TODO: Fold time series at frequency
 
 Note, Oct 17, 2019: plot can show multiple simultaneous periodograms (not 
 spectral window).  Inconsistent tracking of amplitude units causes trouble.
@@ -81,6 +81,7 @@ import lightkurve as lk
 from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
 #from IPython.display import display
+from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt 
 import ipywidgets as widgets
 from ipywidgets import HBox,VBox
@@ -185,7 +186,7 @@ class Pyriod(object):
         self.perfig,self.perax = plt.subplots(figsize=(6,3),num='Periodogram ({:d})'.format(self.id))
         self.perax.set_xlabel("frequency")
         self.perax.set_ylabel("amplitude ({})".format(self.amp_unit))
-        self.lcax.set_position([0.13,0.2,0.85,0.78])
+        self.lcax.set_position([0.13,0.22,0.85,0.76])
         
         
         #Define frequency sampling
@@ -281,7 +282,7 @@ class Pyriod(object):
         self._tstype = widgets.Dropdown(
             options=['Original', 'Residuals'],
             value='Original',
-            description='Time Series to Display:',
+            description='Display:',
             disabled=False
         )
         self._tstype.observe(self._update_lc_display)
@@ -479,7 +480,34 @@ class Pyriod(object):
             layout={'height': '100%',
                     'width': '90%'}
         )
-        self._logbox = widgets.VBox([self._log], layout={'height': '200px','width': '950px'})
+        
+        self._log_file_location = widgets.Text(
+            value='Pyriod_log.txt',
+            placeholder='text file to write log to',
+            tooltip='Path of text file to write to.',
+            description='File location:',
+            disabled=False
+        )
+                
+        self._save_log = widgets.Button(
+            description="Save",
+            disabled=False,
+            #button_style='success', # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Save log to csv file.',
+            icon='save'
+        )
+        self._save_log.on_click(self._save_log_button_click)
+        
+        self._overwrite = widgets.Checkbox(
+            value=False,
+            description='Overwrite?'
+        )
+        
+        self._logbox = VBox([self._log,
+                             HBox([self._save_log,self._log_file_location,self._overwrite],layout={'height': '40px'})],
+                            layout={'height': '300px','width': '950px'})
+        
+        
     
     #Function for logging messages
     def log(self,message,level='info'):
@@ -864,41 +892,34 @@ class Pyriod(object):
             self.update_marker(event.xdata,self.interpls(event.xdata))
         
     def Periodogram(self):
-        #display(#self._pertype,self._recalculate,
-        pertab1 = VBox([widgets.HBox([self._thisfreq,self._thisamp]),
-                        self._addtosol,
-                        self.perfig.canvas])
-        pertab2 = VBox([self._snaptopeak,self._show_per_markers,
+        options = widgets.Accordion(children=[VBox([self._snaptopeak,self._show_per_markers,
                         self._show_per_orig,self._show_per_resid,
-                        self._show_per_model,self._show_per_sw])
-        pertabs = widgets.Tab(children=[pertab1,pertab2])
-        pertabs.set_title(0, 'plot')
-        pertabs.set_title(1, 'options')
-        return pertabs
+                        self._show_per_model,self._show_per_sw])],selected_index=None)
+        options.set_title(0, 'options')
+        
+        periodogram = VBox([HBox([self._thisfreq,self._thisamp]),
+                        HBox([self._addtosol,self._refit]),
+                        self.perfig.canvas,
+                        options])
+        return periodogram
         
         
     def TimeSeries(self):
-        return VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,
-                     self.lcfig.canvas])
-        #display(self._tstype,self.lcfig)
+        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq])],selected_index=None)
+        options.set_title(0, 'options')
+        return VBox([self.lcfig.canvas,options])
     
     #This one shows all the tabs
     def Pyriod(self):
         tstab = self.TimeSeries()
-        pertab1 = VBox([widgets.HBox([self._thisfreq,self._thisamp]),
-                        self._addtosol,
-                        self.perfig.canvas])
-        pertab2 = VBox([self._snaptopeak,self._show_per_markers,
-                        self._show_per_orig,self._show_per_resid,
-                        self._show_per_model,self._show_per_sw])
+        pertab = self.Periodogram()
         signalstab = self.Signals()
         logtab = self.Log()
-        tabs = widgets.Tab(children=[tstab,pertab1,pertab2,signalstab,logtab])
+        tabs = widgets.Tab(children=[tstab,pertab,signalstab,logtab])
         tabs.set_title(0, 'Time Series')
         tabs.set_title(1, 'Periodogram')
-        tabs.set_title(2, 'Options')
-        tabs.set_title(3, 'Signals')
-        tabs.set_title(4, 'Log')
+        tabs.set_title(2, 'Signals')
+        tabs.set_title(3, 'Log')
         return tabs
         
     def update_marker(self,x,y):
@@ -925,9 +946,9 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
-        return widgets.VBox([widgets.HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
+        return VBox([HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
                 self.signals_qgrid,
-                widgets.HBox([self._save,self._load,self._file_location])])
+                HBox([self._save,self._load,self._file_location])])
         
     def Log(self):
         return self._logbox
@@ -949,3 +970,10 @@ class Pyriod(object):
         
     def _load_button_click(self, *args):
         self.load_solution(filename=self._file_location.value)
+        
+    def _save_log_button_click(self, *args):
+        soup = BeautifulSoup(self._log.value, features="lxml")
+        mode = {True:"w+",False:"a+"}[self._overwrite.value]
+        f = open(self._log_file_location.value, mode)
+        f.write(soup.get_text())
+        f.close()
