@@ -88,7 +88,8 @@ from ipywidgets import HBox,VBox
 import qgrid
 import logging
 if sys.version_info < (3, 0):
-    from io import BytesIO as StringIO
+    #from io import BytesIO as StringIO
+    from StringIO import StringIO
 else:
     from io import StringIO
 
@@ -100,6 +101,17 @@ plt.ioff()
 def sin(x, freq, amp, phase):
     """for fitting to time series"""
     return amp*np.sin(2.*np.pi*(freq*x+phase))
+
+#From https://stackoverflow.com/a/16571630
+class Capturing(list):
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self._stringio = StringIO()
+        return self
+    def __exit__(self, *args):
+        self.extend(self._stringio.getvalue().splitlines())
+        del self._stringio    # free up some memory
+        sys.stdout = self._stdout
 
 class Pyriod(object):
     """Time series periodic analysis class.
@@ -270,8 +282,10 @@ class Pyriod(object):
         self.signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
         self._init_signals_widgets()
         
-        
         self.log("Pyriod object initialized.")
+        #Try to write lightkurve properties to log
+        self._log_lc_properties()
+
     
     
     ###### Run initialization functions #######
@@ -463,7 +477,6 @@ class Pyriod(object):
         
     def _init_log(self):
         #To log messages, use self.log() function
-        
         self.logger = logging.getLogger('basic_logger')
         self.logger.setLevel(logging.DEBUG)
         self.log_capture_string = StringIO()
@@ -507,8 +520,6 @@ class Pyriod(object):
                              HBox([self._save_log,self._log_file_location,self._overwrite],layout={'height': '40px'})],
                             layout={'height': '300px','width': '950px'})
         
-        
-    
     #Function for logging messages
     def log(self,message,level='info'):
         logdict = {
@@ -521,6 +532,16 @@ class Pyriod(object):
         logdict[level](message+'<br>')
         self._update_log()
         
+    
+    
+    def _log_lc_properties(self):
+        try:
+            with Capturing() as output:
+                self.lc_orig.show_properties()
+            info = str("".join([e+' |' for e in output[2:]]))
+            self.log("Time Series Properties:"+info)
+        except Exception: 
+            pass
     
     #Functions for interacting with model fit
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
