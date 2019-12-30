@@ -129,7 +129,7 @@ class Pyriod(object):
     """
     id_generator = itertools.count(0)
     def __init__(self, lc=None, time=None, flux=None, freq_unit=u.microHertz, 
-                 time_unit=u.day, oversample_factor=10, amp_unit='ppt'):
+                 time_unit=u.day, oversample_factor=5, amp_unit='ppt'):
         self.id = next(self.id_generator)
         self.oversample_factor = oversample_factor
         self.freq_unit = freq_unit
@@ -209,28 +209,33 @@ class Pyriod(object):
         #And the Nyquist (approximate for unevenly sampled data)
         self.nyq = 1./(2.*dt*self.freq_conversion)
         #Sample the following frequencies:
-        self.freqs = np.arange(0,self.nyq+self.fres/oversample_factor,self.fres/oversample_factor)
+        self.freqs = np.arange(self.fres/oversample_factor,self.nyq+self.fres/oversample_factor,self.fres/oversample_factor)
         
         #Compute and plot original periodogram
         self.per_orig = self.lc_orig.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
                                                frequency=self.freqs)*self.amp_conversion
-        self.per_orig = self.per_orig[np.isfinite(self.per_orig.power.value)] #remove infinities
-        self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1)
+        #self.per_orig = self.per_orig[np.isfinite(self.per_orig.power.value)] #remove infinities
+        self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1,c='tab:gray')
         self.perax.set_xlabel("frequency ({})".format(self.per_orig.frequency.unit.to_string()))
         self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value))
         self.perax.set_xlim(np.min(self.freqs),np.max(self.freqs))
         self.perax.set_position([0.13,0.21,0.85,0.77])
         
-        #Compute and plot periodogram of model sampled as observed
-        self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
-                                               frequency=self.freqs).power.value*self.amp_conversion
-        self.perplot_model, = self.perax.plot(self.freqs,self.per_model,lw=1)
+        #Compute and plot periodogram of model sampled as observed (initially zero)
+        #self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
+        #                                       frequency=self.freqs).power.value*self.amp_conversion
+        self.per_model = np.zeros(len(self.freqs))
+        self.perplot_model, = self.perax.plot(self.freqs,self.per_model,lw=1,c='tab:green')
 
-        #Compute and plot periodogram of residuals
-        self.per_resid = self.lc_resid.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
-                                               frequency=self.freqs).power.value*self.amp_conversion
-        self.perplot_resid, = self.perax.plot(self.freqs,self.per_resid,lw=1)
-                                         
+        #Compute and plot periodogram of residuals (initially the same as per_orig
+        #self.per_resid = self.lc_resid.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
+        #                                       frequency=self.freqs).power.value*self.amp_conversion
+        self.per_resid = self.per_orig.power.value
+        self.perplot_resid, = self.perax.plot(self.freqs,self.per_resid,lw=1,c='tab:blue')
+        
+        #interpolate to residual periodogram when clicks don't snap to peaks
+        self.interpls = interp1d(self.freqs,self.per_resid)
+        
         #Compute spectral window
         #TODO: do with lightkurve
         #May not work in Python3!!
@@ -238,15 +243,12 @@ class Pyriod(object):
                                            fit_mean=False).power(self.freqs,method = 'fast'))
         #self.perplot_sw, = self.perax.plot(self.freqs,self.specwin,lw=1)
         
-        #Is the following truly needed?
-        self.interpls = interp1d(self.per_orig.frequency.value,self.per_orig.power.value)
-        
         #Create markers for selected peak, adopted signals
         self.marker = self.perax.plot([0],[0],c='k',marker='o')[0]
-        self.signal_marker_color = 'green'
+        self._signal_marker_color = 'green'
         self.signal_markers, = self.perax.plot([],[],marker='D',fillstyle='none',
                                                linestyle='None',
-                                               c=self.signal_marker_color,ms=5)
+                                               c=self._signal_marker_color,ms=5)
         #self._makeperiodsolutionvisible()
         self._display_per_orig()
         self._display_per_resid()
@@ -361,7 +363,7 @@ class Pyriod(object):
         
         #Check boxes for what to include on periodogram plot
         self._show_per_orig = widgets.Checkbox(
-            value=True,
+            value=False,
             description='Original',
             disabled=False,
             style={'description_width': 'initial'}
@@ -369,7 +371,7 @@ class Pyriod(object):
         self._show_per_orig.observe(self._display_per_orig)
         
         self._show_per_resid = widgets.Checkbox(
-            value=False,
+            value=True,
             description='Residuals',
             disabled=False,
             style={'description_width': 'initial'}
@@ -377,7 +379,7 @@ class Pyriod(object):
         self._show_per_resid.observe(self._display_per_resid)
         
         self._show_per_model = widgets.Checkbox(
-            value=False,
+            value=True,
             description='Model',
             disabled=False,
             style={'description_width': 'initial'}
@@ -409,7 +411,7 @@ class Pyriod(object):
                 
     
                 # Qgrid options
-                'maxVisibleRows': 15,
+                'maxVisibleRows': 8,
                 'minVisibleRows': 8,
                 'sortable': True,
                 'filterable': False,  #Not useful here
@@ -417,16 +419,16 @@ class Pyriod(object):
                 'highlightSelectedRow': True
                }
         
-        self._column_definitions = {"include":  {'width': 65, 'toolTip': "include signal in model fit?"},
-                                    "freq":      {'width': 130, 'toolTip': "mode frequency"},
-                                    "fixfreq":  {'width': 65, 'toolTip': "fix frequency during fit?"},
-                                    "freqerr":  {'width': 120, 'toolTip': "uncertainty on frequency", 'editable': False},
-                                    "amp":       {'width': 130, 'toolTip': "mode amplitude"},
-                                    "fixamp":   {'width': 65, 'toolTip': "fix amplitude during fit?"},
-                                    "amperr":  {'width': 120, 'toolTip': "uncertainty on amplitude", 'editable': False},
-                                    "phase":     {'width': 130, 'toolTip': "mode phase"},
+        self._column_definitions = {"include":  {'width': 60, 'toolTip': "include signal in model fit?"},
+                                    "freq":      {'width': 120, 'toolTip': "mode frequency"},
+                                    "fixfreq":  {'width': 60, 'toolTip': "fix frequency during fit?"},
+                                    "freqerr":  {'width': 100, 'toolTip': "uncertainty on frequency", 'editable': False},
+                                    "amp":       {'width': 120, 'toolTip': "mode amplitude"},
+                                    "fixamp":   {'width': 60, 'toolTip': "fix amplitude during fit?"},
+                                    "amperr":  {'width': 100, 'toolTip': "uncertainty on amplitude", 'editable': False},
+                                    "phase":     {'width': 120, 'toolTip': "mode phase"},
                                     "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
-                                    "phaseerr":  {'width': 120, 'toolTip': "uncertainty on phase", 'editable': False}}
+                                    "phaseerr":  {'width': 100, 'toolTip': "uncertainty on phase", 'editable': False}}
     
     def _init_signals_widgets(self):
         ### Time Series widget stuff  ###
@@ -677,7 +679,6 @@ class Pyriod(object):
         #update qgrid
         self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
         #self.signals_qgrid.df = self._convert_values_to_qgrid()[self.columns[:-1]]
-        #TODO: also update uncertainties
         
         self._update_values_from_qgrid() #Necessary?
     
@@ -861,6 +862,7 @@ class Pyriod(object):
                                                frequency=self.freqs).power.value*self.amp_conversion
         self.perplot_resid.set_ydata(self.per_resid)
         self.perfig.canvas.draw()
+        self.interpls = interp1d(self.freqs,self.per_resid)
    
     def _display_per_orig(self, *args):
         if self._show_per_orig.value:
@@ -906,7 +908,7 @@ class Pyriod(object):
             
             nearby = np.argwhere((self.freqs >= event.xdata - tolerance) & 
                                  (self.freqs <= event.xdata + tolerance))
-            ydata = self.perplot_orig.get_ydata()
+            ydata = self.perplot_resid.get_ydata()
             highestind = np.nanargmax(ydata[nearby]) + nearby[0]
             self.update_marker(self.freqs[highestind],ydata[highestind])
         else:
