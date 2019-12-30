@@ -135,7 +135,7 @@ class Pyriod(object):
         time_unit = u.day
         self.freq_conversion = time_unit.to(1/self.freq_unit)
         self.amp_unit = amp_unit
-        self.amp_conversion = {'relative':1e0, 'percent':1e2, 'ppt':1e3, 'ppm':1e6}[self.amp_unit]
+        self.amp_conversion = {'relative':1e0, 'percent':1e2, 'ppt':1e3, 'ppm':1e6, 'mma':1e3}[self.amp_unit]
         
         ### LOG ###
         #Initialize this first and keep track of every important action taken
@@ -492,8 +492,7 @@ class Pyriod(object):
             value='Log',
             placeholder='Log',
             description='Log:',
-            layout={'height': '100%',
-                    'width': '90%'}
+            layout={'height': '250px','width': '950px'}
         )
         
         self._log_file_location = widgets.Text(
@@ -507,7 +506,6 @@ class Pyriod(object):
         self._save_log = widgets.Button(
             description="Save",
             disabled=False,
-            #button_style='success', # 'success', 'info', 'warning', 'danger' or ''
             tooltip='Save log to csv file.',
             icon='save'
         )
@@ -518,7 +516,7 @@ class Pyriod(object):
             description='Overwrite?'
         )
         
-        self._logbox = VBox([self._log,
+        self._logbox = VBox([widgets.Box([self._log]),
                              HBox([self._save_log,self._log_file_location,self._overwrite],layout={'height': '40px'})],
                             layout={'height': '300px','width': '950px'})
         
