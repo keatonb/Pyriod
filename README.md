@@ -21,4 +21,4 @@ jupyter nbextension enable --py --sys-prefix widgetsnbextension
 jupyter nbextension enable --py --sys-prefix ipympl
 ```
 
-This is a serious work in progress with many planned improvements.  Please be patient, but also feel free to request new features.
+This is a serious work in progress with many planned improvements.  Please be patient, but also feel free to request new features by raising GitHub issues.
