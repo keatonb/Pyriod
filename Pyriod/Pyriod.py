@@ -128,11 +128,11 @@ class Pyriod(object):
 	Include flux uncertainties, units, etc.
     """
     id_generator = itertools.count(0)
-    def __init__(self, lc=None, time=None, flux=None, freq_unit=u.microHertz, 
-                 time_unit=u.day, oversample_factor=5, amp_unit='ppt'):
+    def __init__(self, lc=None, time=None, flux=None, oversample_factor=5, amp_unit='ppt'):
         self.id = next(self.id_generator)
         self.oversample_factor = oversample_factor
-        self.freq_unit = freq_unit
+        self.freq_unit = u.microHertz
+        time_unit = u.day
         self.freq_conversion = time_unit.to(1/self.freq_unit)
         self.amp_unit = amp_unit
         self.amp_conversion = {'relative':1e0, 'percent':1e2, 'ppt':1e3, 'ppm':1e6}[self.amp_unit]
