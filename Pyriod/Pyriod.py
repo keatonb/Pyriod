@@ -681,7 +681,7 @@ class Pyriod(object):
         self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
         #self.signals_qgrid.df = self._convert_values_to_qgrid()[self.columns[:-1]]
         
-        self._update_values_from_qgrid() #Necessary?
+        self._update_values_from_qgrid()
     
     def _convert_values_to_qgrid(self):
         tempdf = self.values.copy()[self.columns[:-1]]
@@ -702,6 +702,7 @@ class Pyriod(object):
         self._update_signal_markers()
         self._update_lc_display()
         self._update_pers()
+        self._update_freq_dropdown()
         
     def _update_lcs(self):
         #Update time series models
@@ -752,9 +753,8 @@ class Pyriod(object):
     
     def _delete_selected(self, *args):
         self.delete_rows(self.signals_qgrid.get_selected_df().index)
-        self._update_freq_dropdown()
-        self._update_signal_markers()
-    
+        self._update_values_from_qgrid()
+
     def initialize_dataframe(self):
         df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
         return df
