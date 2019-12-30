@@ -170,7 +170,7 @@ class Pyriod(object):
         #Also plot the model over the time series
         dt = np.median(np.diff(self.lc_orig.time))
         time_samples = np.arange(np.min(self.lc_orig.time),
-                                 np.max(self.lc_orig.time)+dt,dt)
+                                 np.max(self.lc_orig.time)+dt/oversample_factor,dt/oversample_factor)
         initmodel = np.zeros(len(time_samples))+np.mean(self.lc_orig.flux)
         self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
         initmodel = np.zeros(len(self.lc_orig.time))+np.mean(self.lc_orig.flux)
@@ -222,19 +222,15 @@ class Pyriod(object):
         self.perax.set_position([0.13,0.21,0.85,0.77])
         
         #Compute and plot periodogram of model sampled as observed (initially zero)
-        #self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
-        #                                       frequency=self.freqs).power.value*self.amp_conversion
-        self.per_model = np.zeros(len(self.freqs))
-        self.perplot_model, = self.perax.plot(self.freqs,self.per_model,lw=1,c='tab:green')
+        self.per_model = self.per_orig.copy()*0.
+        self.perplot_model, = self.perax.plot(self.freqs,self.per_model.power.value,lw=1,c='tab:green')
 
-        #Compute and plot periodogram of residuals (initially the same as per_orig
-        #self.per_resid = self.lc_resid.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
-        #                                       frequency=self.freqs).power.value*self.amp_conversion
-        self.per_resid = self.per_orig.power.value
-        self.perplot_resid, = self.perax.plot(self.freqs,self.per_resid,lw=1,c='tab:blue')
+        #Compute and plot periodogram of residuals (initially the same as per_orig)
+        self.per_resid = self.per_orig.copy()
+        self.perplot_resid, = self.perax.plot(self.freqs,self.per_resid.power.value,lw=1,c='tab:blue')
         
         #interpolate to residual periodogram when clicks don't snap to peaks
-        self.interpls = interp1d(self.freqs,self.per_resid)
+        self.interpls = interp1d(self.freqs,self.per_resid.power.value)
         
         #Compute spectral window
         #TODO: do with lightkurve
@@ -256,10 +252,7 @@ class Pyriod(object):
         self._display_per_sw()
         self._display_per_markers()
         
-        
-        self.update_marker(self.freqs[np.nanargmax(self.per_orig.power.value)],
-                           np.nanmax(self.per_orig.power.value))
-        
+        self.mark_highest_peak()
         
         #This handles clicking while zooming problems
         #self.perfig.canvas.mpl_connect('button_press_event', self.onperiodogramclick)
@@ -285,9 +278,9 @@ class Pyriod(object):
         self._init_signals_widgets()
         
         self.log("Pyriod object initialized.")
-        #Try to write lightkurve properties to log
+        #Write lightkurve and periodogram properties to log
         self._log_lc_properties()
-
+        self._log_per_properties()
     
     
     ###### Run initialization functions #######
@@ -525,7 +518,7 @@ class Pyriod(object):
         logdict = {
             'debug': self.logger.debug,
             'info': self.logger.info,
-            'warn': self.logger.warn,
+            'warning': self.logger.warning,
             'error': self.logger.error,
             'critical': self.logger.critical
             }
@@ -540,6 +533,15 @@ class Pyriod(object):
                 self.lc_orig.show_properties()
             info = str("".join([e+' |' for e in output[2:]]))
             self.log("Time Series Properties:"+info)
+        except Exception:
+            pass
+        
+    def _log_per_properties(self):
+        try:
+            with Capturing() as output:
+                self.per_resid.show_properties()
+            info = str("".join([e+' |' for e in output[3:]]))
+            self.log("Periodogram Properties:"+info)
         except Exception:
             pass
     
@@ -652,6 +654,7 @@ class Pyriod(object):
         
         self._update_values_from_fit(result.params,prefixmap)
         self.log("Fit refined.")
+        self.mark_highest_peak()#Mark highest peak in residuals
         
     def _update_values_from_fit(self,params,prefixmap):
         #update dataframe of params with new values from fit
@@ -854,13 +857,15 @@ class Pyriod(object):
     
     def _update_pers(self):
         self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
-                                               frequency=self.freqs).power.value*self.amp_conversion
-        self.perplot_model.set_ydata(self.per_model)
+                                               frequency=self.freqs)*self.amp_conversion
+        self.perplot_model.set_ydata(self.per_model.power.value)
         self.per_resid = self.lc_resid.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
-                                               frequency=self.freqs).power.value*self.amp_conversion
-        self.perplot_resid.set_ydata(self.per_resid)
+                                               frequency=self.freqs)*self.amp_conversion
+        self.perplot_resid.set_ydata(self.per_resid.power.value)
         self.perfig.canvas.draw()
-        self.interpls = interp1d(self.freqs,self.per_resid)
+        self.interpls = interp1d(self.freqs,self.per_resid.power.value)
+        #Write info to log
+        self._log_per_properties()
    
     def _display_per_orig(self, *args):
         if self._show_per_orig.value:
@@ -952,7 +957,10 @@ class Pyriod(object):
         self.marker.set_data([x],[y])
         self.perfig.canvas.draw()
         self.perfig.canvas.flush_events()
-        
+    
+    def mark_highest_peak(self):    
+        self.update_marker(self.freqs[np.nanargmax(self.per_resid.power.value)],
+                           np.nanmax(self.per_resid.power.value))
         
     def onclick(self,event):
         self.onperiodogramclick(event)
