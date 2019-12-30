@@ -212,7 +212,7 @@ class Pyriod(object):
         self.freqs = np.arange(self.fres/oversample_factor,self.nyq+self.fres/oversample_factor,self.fres/oversample_factor)
         
         #Compute and plot original periodogram
-        self.per_orig = self.lc_orig.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
+        self.per_orig = self.lc_orig.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
                                                frequency=self.freqs)*self.amp_conversion
         #self.per_orig = self.per_orig[np.isfinite(self.per_orig.power.value)] #remove infinities
         self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1,c='tab:gray')
@@ -222,13 +222,13 @@ class Pyriod(object):
         self.perax.set_position([0.13,0.21,0.85,0.77])
         
         #Compute and plot periodogram of model sampled as observed (initially zero)
-        #self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
+        #self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
         #                                       frequency=self.freqs).power.value*self.amp_conversion
         self.per_model = np.zeros(len(self.freqs))
         self.perplot_model, = self.perax.plot(self.freqs,self.per_model,lw=1,c='tab:green')
 
         #Compute and plot periodogram of residuals (initially the same as per_orig
-        #self.per_resid = self.lc_resid.to_periodogram(normalization='amplitude',freq_unit=freq_unit,
+        #self.per_resid = self.lc_resid.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
         #                                       frequency=self.freqs).power.value*self.amp_conversion
         self.per_resid = self.per_orig.power.value
         self.perplot_resid, = self.perax.plot(self.freqs,self.per_resid,lw=1,c='tab:blue')
