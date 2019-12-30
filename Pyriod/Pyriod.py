@@ -540,7 +540,7 @@ class Pyriod(object):
                 self.lc_orig.show_properties()
             info = str("".join([e+' |' for e in output[2:]]))
             self.log("Time Series Properties:"+info)
-        except Exception: 
+        except Exception:
             pass
     
     #Functions for interacting with model fit
