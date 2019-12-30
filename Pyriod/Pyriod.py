@@ -420,13 +420,13 @@ class Pyriod(object):
                }
         
         self._column_definitions = {"include":  {'width': 60, 'toolTip': "include signal in model fit?"},
-                                    "freq":      {'width': 120, 'toolTip': "mode frequency"},
+                                    "freq":      {'width': 115, 'toolTip': "mode frequency"},
                                     "fixfreq":  {'width': 60, 'toolTip': "fix frequency during fit?"},
                                     "freqerr":  {'width': 100, 'toolTip': "uncertainty on frequency", 'editable': False},
-                                    "amp":       {'width': 120, 'toolTip': "mode amplitude"},
+                                    "amp":       {'width': 115, 'toolTip': "mode amplitude"},
                                     "fixamp":   {'width': 60, 'toolTip': "fix amplitude during fit?"},
                                     "amperr":  {'width': 100, 'toolTip': "uncertainty on amplitude", 'editable': False},
-                                    "phase":     {'width': 120, 'toolTip': "mode phase"},
+                                    "phase":     {'width': 115, 'toolTip': "mode phase"},
                                     "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
                                     "phaseerr":  {'width': 100, 'toolTip': "uncertainty on phase", 'editable': False}}
     
