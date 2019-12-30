@@ -1,3 +1,5 @@
+# Tutorial
+
 Pyriod is primarily meant to be run interactively in a Jupyter notebook (convenient functions for scripting analyses without the GUI are being developed).  To display the interactive widgets, you must type the `%matplotlib widget` magic command at the top of your Jupyter notebook.  Then import Pyriod.
 ````
 %matplotlib widget
@@ -12,7 +14,7 @@ pyriod = Pyriod(lc)
 ````
 For now, the times are expected to be given in days and frequencies will be displayed in microHz, though providing other unit options is as planned improvement.  The units for providing signal amplitudes can be chosen from `['relative', 'percent', 'ppt', 'ppm', 'mma']`.
 
-# Time Series tab
+## Time Series tab
 
 To display and interact with the time series data, call
 ````
@@ -22,20 +24,20 @@ You can zoom around on or save the figure from the toolbar. As you fit frequency
 
 ![Screenshot](img/TimeSeries.png)
 
-# Periodogram tab
+## Periodogram tab
 
 Access the periodogram tab by calling
 ````
 pyriod.Periodogram()
 ````
 
-This displays the periodogram of the original data.  You can click on peaks to stage them for adoption into your frequency solution. Click "Add to solution" to add the currently selected peak to the model.  Then click "Refine fit" to fit the model with the new signals to the time series.  The plot will update to show the periodogram of the residuals, and the periodogram of the model will be displayed in the background.
+This displays the periodogram of the original data.  You can click on peaks to stage them for adoption into your frequency solution. Click "Add to solution" to add the currently selected peak to the model.  Then click "Refine fit" to compute a least-squared fit of the model with the new signals to the time series using [Lmfit](https://lmfit.github.io/lmfit-py/).  The plot will update to show the periodogram of the residuals, and the periodogram of the model will be displayed in the background.
 
 You can expand the options to choose which periodograms to display in the plot and whether your clicks should snap to the highest nearby peak.
 
 ![Screenshot](img/Periodogram.png)
 
-# Signals tab
+## Signals tab
 
 You can display a table of signals in your frequency solution by calling
 ````
@@ -53,7 +55,7 @@ You can save the frequency solution to the provided csv filename (relative path)
 
 ![Screenshot](img/Signals.png)
 
-# Log
+## Log
 The Log records important actions taken as part of your analysis for reproducibility and can be saved to plain text.
 
 ````
@@ -61,7 +63,7 @@ pyriod.Log()
 ````
 ![Screenshot](img/Log.png)
 
-# Pyriod suite
+## Pyriod suite
 
 Finally, if you want to do your entire analysis in a single cell with a single call, use
 ````
