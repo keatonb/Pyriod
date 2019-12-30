@@ -1,2 +1,6 @@
 site_name: Pyriod
+nav:
+    - Home: index.md
+    - Tutorial: tutorial.md
+#   - Examples: examples.md
 theme: readthedocs
