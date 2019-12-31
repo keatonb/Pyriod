@@ -1,6 +1,6 @@
 # Tutorial
 
-Pyriod is primarily meant to be run interactively in a Jupyter notebook (convenient functions for scripting analyses without the GUI are being developed).  To display the interactive widgets, you must type the `%matplotlib widget` magic command at the top of your Jupyter notebook.  Then import Pyriod.
+Pyriod is primarily meant to be run interactively in a Jupyter Notebook (does not work in JupiterLab because of Qgrid compatibility issues; convenient functions for scripting analyses without the GUI are being developed).  To display the interactive widgets, you must type the `%matplotlib widget` magic command at the top of your Jupyter notebook.  Then import Pyriod.
 ````
 %matplotlib widget
 from Pyriod import Pyriod

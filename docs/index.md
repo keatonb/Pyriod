@@ -4,6 +4,8 @@ Python implementation of basic period detection and fitting routines for astrono
 
 Pyriod aims to eventually provide most of the functionality of the wonderful program [Period04](https://www.univie.ac.at/tops/Period04/) in the Python environment for the modern astronomy workflow, as well as other useful features.
 
+The interactive GUI runs in a Jupyter Notebook (not compatible with JupyterLab).
+
 This is a serious work in progress with many planned improvements. Please be patient, but also feel free to request new features on the issues page on [GitHub](https://github.com/keatonb/Pyriod/issues).
 
 Pyriod is written and maintained by [Keaton Bell](http://staff.washington.edu/keatonb/).

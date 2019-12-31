@@ -20,5 +20,6 @@ jupyter nbextension enable --py --sys-prefix qgrid
 jupyter nbextension enable --py --sys-prefix widgetsnbextension
 jupyter nbextension enable --py --sys-prefix ipympl
 ```
+Pyriod does not work in JupyterLab.
 
 This is a serious work in progress with many planned improvements.  Please be patient, but also feel free to request new features by raising GitHub issues.
