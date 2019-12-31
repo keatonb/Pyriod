@@ -62,6 +62,7 @@ TODO: Show smoothed light curve (and when folded)
 from __future__ import division, print_function
  
 import sys
+import os
 import numpy as np
 import itertools
 import re
@@ -523,8 +524,8 @@ class Pyriod(object):
         try:
             with Capturing() as output:
                 self.lc_orig.show_properties()
-            info = str("".join([e+' |' for e in output[2:]]))
-            self.log("Time Series Properties:"+info)
+            info = re.sub(' +', ' ', str("".join([e+' |\n' for e in output[2:]])))
+            self.log("Time Series properties:"+info)
         except Exception:
             pass
         
@@ -532,8 +533,8 @@ class Pyriod(object):
         try:
             with Capturing() as output:
                 self.per_resid.show_properties()
-            info = str("".join([e+' |' for e in output[3:]]))
-            self.log("Periodogram Properties:"+info)
+            info = re.sub(' +', ' ', str("".join([e+' |\n' for e in output[3:]])))
+            self.log("Periodogram properties:"+info)
         except Exception:
             pass
     
@@ -593,7 +594,8 @@ class Pyriod(object):
         Improve fit once with all frequencies fixed, then allow to vary.
         """
         if np.sum(self.values.include.values) == 0:
-            return #If nothing to fit
+            self.log("No signals to fit.",level='warning')
+            return # nothing to fit
         
         #Set up lmfit model for fitting
         signals = {} #empty dict to be populated
@@ -646,11 +648,13 @@ class Pyriod(object):
                 params[prefixmap[prefix]+'freq'].set(vary=~self.values.fixfreq[prefix])
                 params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
                 params[prefixmap[prefix]+'phase'].set(result.params[prefixmap[prefix]+'phase'].value)
-                
+        
         result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time+self.tshift)
+        self.log("Fit refined.")  
+        self.log("Fit properties:"+result.fit_report())
         
         self._update_values_from_fit(result.params,prefixmap)
-        self.log("Fit refined.")
+        
         self.mark_highest_peak()#Mark highest peak in residuals
         
     def _update_values_from_fit(self,params,prefixmap):
@@ -745,6 +749,7 @@ class Pyriod(object):
               'float','bool','float','bool']
     
     def delete_rows(self,indices):
+        self.log("Deleted signals {}".format([sig for sig in indices]))
         self.values = self.values.drop(indices)
         self.signals_qgrid.df = self.signals_qgrid.df.drop(indices)
     
@@ -983,6 +988,7 @@ class Pyriod(object):
         self._log.value = self.log_capture_string.getvalue()
         
     def save_solution(self,filename='Pyriod_solution.csv'):
+        self.log("Writing signal solution to "+os.path.abspath(filename))
         self.signals_qgrid.df.to_csv(filename,index_label='label')
         
     def _save_button_click(self, *args):
@@ -991,15 +997,25 @@ class Pyriod(object):
     def load_solution(self,filename='Pyriod_solution.csv'):
         loaddf = pd.read_csv(filename,index_col='label')
         loaddf.index = loaddf.index.rename(None)
+        logmessage = "Loading signal solution from "+os.path.abspath(filename)+".<br />"
+        logmessage += loaddf.to_string().replace('\n','<br />')
+        self.log(logmessage)
         self.signals_qgrid.df = loaddf
-        self._qgrid_changed_manually()
+        self._update_values_from_qgrid()
         
     def _load_button_click(self, *args):
         self.load_solution(filename=self._file_location.value)
         
     def _save_log_button_click(self, *args):
+        self.save_log(self._log_file_location.value,self._overwrite.value)
+        
+    def save_log(self,filename,overwrite=False):
+        logmessage = "Writing log to "+os.path.abspath(filename)
+        if overwrite:
+            logmessage += ", overwriting."
+        self.log(logmessage)
         soup = BeautifulSoup(self._log.value, features="lxml")
-        mode = {True:"w+",False:"a+"}[self._overwrite.value]
-        f = open(self._log_file_location.value, mode)
-        f.write(soup.get_text())
+        mode = {True:"w+",False:"a+"}[overwrite]
+        f = open(filename, mode)
+        f.write(soup.get_text().replace('|', ''))
         f.close()
