@@ -159,9 +159,10 @@ class Pyriod(object):
         
         #Initialize time series widgets and plots
         self._init_timeseries_widgets()
-        self.lcfig,self.lcax = plt.subplots(figsize=(6,2),num='Time Series ({:d})'.format(self.id))
+        self.lcfig,self.lcax = plt.subplots(figsize=(7,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_xlabel("time")
         self.lcax.set_ylabel("rel. variation")
+        self.lcax.set_position([0.13,0.22,0.85,0.76])
         self.lcplot_data, = self.lcax.plot(self.lc_orig.time,self.lc_orig.flux,marker='o',ls='None',ms=1)
         #Also plot the model over the time series
         dt = np.median(np.diff(self.lc_orig.time))
@@ -191,11 +192,9 @@ class Pyriod(object):
         self._init_periodogram_widgets()
         
         #Set up some figs/axes for periodogram plots
-        self.perfig,self.perax = plt.subplots(figsize=(6,3),num='Periodogram ({:d})'.format(self.id))
+        self.perfig,self.perax = plt.subplots(figsize=(7,3),num='Periodogram ({:d})'.format(self.id))
         self.perax.set_xlabel("frequency")
         self.perax.set_ylabel("amplitude ({})".format(self.amp_unit))
-        self.lcax.set_position([0.13,0.22,0.85,0.76])
-        
         
         #Define frequency sampling
         
@@ -217,7 +216,7 @@ class Pyriod(object):
         self.perax.set_xlabel("frequency ({})".format(self.per_orig.frequency.unit.to_string()))
         self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value))
         self.perax.set_xlim(np.min(self.freqs),np.max(self.freqs))
-        self.perax.set_position([0.13,0.21,0.85,0.77])
+        self.perax.set_position([0.13,0.22,0.8,0.76])
         
         #Compute and plot periodogram of model sampled as observed (initially zero)
         self.per_model = self.per_orig.copy()*0.
@@ -411,13 +410,13 @@ class Pyriod(object):
                }
         
         self._column_definitions = {"include":  {'width': 60, 'toolTip': "include signal in model fit?"},
-                                    "freq":      {'width': 115, 'toolTip': "mode frequency"},
+                                    "freq":      {'width': 112, 'toolTip': "mode frequency"},
                                     "fixfreq":  {'width': 60, 'toolTip': "fix frequency during fit?"},
                                     "freqerr":  {'width': 100, 'toolTip': "uncertainty on frequency", 'editable': False},
-                                    "amp":       {'width': 115, 'toolTip': "mode amplitude"},
+                                    "amp":       {'width': 112, 'toolTip': "mode amplitude"},
                                     "fixamp":   {'width': 60, 'toolTip': "fix amplitude during fit?"},
                                     "amperr":  {'width': 100, 'toolTip': "uncertainty on amplitude", 'editable': False},
-                                    "phase":     {'width': 115, 'toolTip': "mode phase"},
+                                    "phase":     {'width': 112, 'toolTip': "mode phase"},
                                     "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
                                     "phaseerr":  {'width': 100, 'toolTip': "uncertainty on phase", 'editable': False}}
     
@@ -591,7 +590,6 @@ class Pyriod(object):
         self.add_signal(freqval,amp,index=combostr)
         self.log("Combination {} added to model.".format(combostr))
         
-    
     def fit_model(self, *args):
         """ 
         Update model to include current signals from DataFrame.
