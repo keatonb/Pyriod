@@ -2,13 +2,13 @@
 
 Python implementation of basic period detection and fitting routines for astronomical time series.
 
-To install, download and run
-
-```python setup.py install```
-
-or use
+To install, use
 
 ```pip install Pyriod```
+
+or download the latest (possibly unstable) version from GitHub and run
+
+```python setup.py install```
 
 Additional documentation is available at [pyriod.readthedocs.io](https://pyriod.readthedocs.io).
 
