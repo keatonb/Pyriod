@@ -537,6 +537,13 @@ class Pyriod(object):
         except Exception:
             pass
     
+    def _next_signal_index(self):
+        #Get next unused independent signal index
+        i=0
+        while "f{}".format(i) in self.values.index:
+            i+=1
+        return "f{}".format(i)
+    
     #Functions for interacting with model fit
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False, include=True, index=None):
@@ -548,8 +555,7 @@ class Pyriod(object):
         newvalues = [[nv] for nv in [freq,fixfreq,amp/self.amp_conversion,fixamp,phase,fixphase,include]]
         colnames = ["freq","fixfreq","amp","fixamp","phase","fixphase","include"]
         if index == None:
-            #TODO: fix numbering to find next indep frequency number
-            index = "f{}".format(len(self.values))
+            index = self._next_signal_index()
         toappend = pd.DataFrame(dict(zip(colnames,newvalues)),columns=self.columns,
                                 index=[index])
         self.values = self.values.append(toappend,sort=False)
@@ -565,9 +571,8 @@ class Pyriod(object):
     #             ast.Div: op.truediv,ast.USub: op.neg}
     def add_combination(self, combostr, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False, index=None):
-        combostr = combostr.replace(" ", "")
+        combostr = combostr.replace(" ", "").lower()
         #evaluate combostring:
-        
         #replace keys with values
         parts = re.split('\+|\-|\*|\/',combostr)
         keys = set([part for part in parts if part in self.values.index])
