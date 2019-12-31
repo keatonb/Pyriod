@@ -123,9 +123,10 @@ class Pyriod(object):
 	Include flux uncertainties, units, etc.
     """
     id_generator = itertools.count(0)
-    def __init__(self, lc=None, time=None, flux=None, oversample_factor=5, amp_unit='ppt'):
+    def __init__(self, lc=None, time=None, flux=None, oversample_factor=5, nyquist_factor=1, amp_unit='ppt'):
         self.id = next(self.id_generator)
         self.oversample_factor = oversample_factor
+        self.nyquist_factor = nyquist_factor
         self.freq_unit = u.microHertz
         time_unit = u.day
         self.freq_conversion = time_unit.to(1/self.freq_unit)
@@ -204,7 +205,9 @@ class Pyriod(object):
         #And the Nyquist (approximate for unevenly sampled data)
         self.nyq = 1./(2.*dt*self.freq_conversion)
         #Sample the following frequencies:
-        self.freqs = np.arange(self.fres/oversample_factor,self.nyq+self.fres/oversample_factor,self.fres/oversample_factor)
+        self.freqs = np.arange(self.fres/oversample_factor,
+                               self.nyq*self.nyquist_factor+self.fres/oversample_factor,
+                               self.fres/oversample_factor)
         
         #Compute and plot original periodogram
         self.per_orig = self.lc_orig.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
