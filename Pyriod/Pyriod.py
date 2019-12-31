@@ -37,7 +37,7 @@ Names of periodograms:
 Names of associates timeseries:
     lc_orig
     lc_resid
-    lc_model_sampled (evenly sampled through gaps)
+    lc_model_sampled (evenly oversampled through gaps)
     lc_model_observed (original time samples)
 TODO: rename all lc to ts
 
@@ -45,25 +45,17 @@ Names of plots are:
     lcplot_data,lcplot_model (different nicknames)
     perplot_orig (same nicknames)
     _perplot_orig_display toggle
-    _perplot_orig_color picker widget
+    TODO: _perplot_orig_color picker widget
     
     
 What to do about units:
-    values dataframe has same units as timeseries
-    displayed signals table is in requested units (same as periodogram plot)
-    amplitude units implemented, time units not
-
-Decide:
-    interppls exists only for inferring amplitude guesses for combo frequencies
-
+    Time series assumed in days, frequencies computed in microHz
+    TODO: Enable other units
+    Different amplitude units available (relative, percent, mma, ppt, etc.)
+    
 TODO: Generate model light curves from lmfit model always (including initialization)
 
 TODO: Show smoothed light curve (and when folded)
-
-TODO: (re-)generate all periodograms in function
-
-Note, Oct 17, 2019: plot can show multiple simultaneous periodograms (not 
-spectral window).  Inconsistent tracking of amplitude units causes trouble.
 
 """
 
@@ -166,7 +158,7 @@ class Pyriod(object):
         self.lcfig,self.lcax = plt.subplots(figsize=(6,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_xlabel("time")
         self.lcax.set_ylabel("rel. variation")
-        self.lcplot_orig, = self.lcax.plot(self.lc_orig.time,self.lc_orig.flux,marker='o',ls='None',ms=1)
+        self.lcplot_data, = self.lcax.plot(self.lc_orig.time,self.lc_orig.flux,marker='o',ls='None',ms=1)
         #Also plot the model over the time series
         dt = np.median(np.diff(self.lc_orig.time))
         time_samples = np.arange(np.min(self.lc_orig.time),
@@ -820,7 +812,7 @@ class Pyriod(object):
         self.perfig.canvas.draw()
         
     def _display_original_lc(self):
-        self.lcplot_orig.set_ydata(self.lc_orig.flux)
+        self.lcplot_data.set_ydata(self.lc_orig.flux)
         self.lcplot_model.set_ydata(self.lc_model_sampled.flux)
         #rescale y to better match data
         ymin = np.min([np.min(self.lc_orig.flux),np.min(self.lc_model_sampled.flux)])
@@ -828,28 +820,28 @@ class Pyriod(object):
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         #fold if requested
         if self._fold.value:
-            self.lcplot_orig.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
+            self.lcplot_data.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
             self.lcplot_model.set_alpha(0)
             self.lcax.set_xlim(0,1)
         else:
-            self.lcplot_orig.set_xdata(self.lc_orig.time)
+            self.lcplot_data.set_xdata(self.lc_orig.time)
             self.lcplot_model.set_alpha(1)
             self.lcax.set_xlim(np.min(self.lc_orig.time),np.max(self.lc_orig.time))
         self.lcfig.canvas.draw()
         
     def _display_residuals_lc(self):
-        self.lcplot_orig.set_ydata(self.lc_resid.flux)
+        self.lcplot_data.set_ydata(self.lc_resid.flux)
         self.lcplot_model.set_ydata(np.zeros(len(self.lc_model_sampled.flux)))
         ymin = np.min(self.lc_resid.flux)
         ymax = np.max(self.lc_resid.flux)
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         #fold if requested
         if self._fold.value:
-            self.lcplot_orig.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
+            self.lcplot_data.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
             self.lcplot_model.set_alpha(0)
             self.lcax.set_xlim(0,1)
         else:
-            self.lcplot_orig.set_xdata(self.lc_orig.time)
+            self.lcplot_data.set_xdata(self.lc_orig.time)
             self.lcplot_model.set_alpha(1)
             self.lcax.set_xlim(np.min(self.lc_orig.time),np.max(self.lc_orig.time))
         self.lcfig.canvas.draw()
