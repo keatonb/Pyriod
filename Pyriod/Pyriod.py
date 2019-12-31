@@ -58,14 +58,21 @@ TODO: Generate model light curves from lmfit model always (including initializat
 TODO: Show smoothed light curve (and when folded)
 
 """
-
+#Standard imports
 from __future__ import division, print_function
- 
 import sys
 import os
-import numpy as np
 import itertools
 import re
+import logging
+if sys.version_info < (3, 0):
+    #from io import BytesIO as StringIO
+    from StringIO import StringIO
+else:
+    from io import StringIO
+
+#Third party imports
+import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
@@ -79,16 +86,11 @@ import matplotlib.pyplot as plt
 import ipywidgets as widgets
 from ipywidgets import HBox,VBox
 import qgrid
-import logging
-if sys.version_info < (3, 0):
-    #from io import BytesIO as StringIO
-    from StringIO import StringIO
-else:
-    from io import StringIO
 
+#Local imports
 from .pyquist import subfreq
 
-plt.ioff()
+plt.ioff()#Turn off interactive mode
 
 #Definition of the basic model we fit
 def sin(x, freq, amp, phase):

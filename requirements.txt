@@ -3,6 +3,7 @@ pandas
 scipy
 lightkurve
 lmfit
+bs4
 matplotlib
 ipympl
 ipywidgets
