@@ -69,6 +69,6 @@ Finally, if you want to do your entire analysis in a single cell with a single c
 ````
 pyriod.Pyriod()
 ````
-and navigate between the different tabs.
+and navigate between the different tabs.  This may be a little buggy in Python 3, but should work in 2.7.
 
 ![Screenshot](img/Pyriod.png)
