@@ -8,17 +8,18 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="Pyriod",
-    version="0.0.2",
+    version="0.0.3",
     author="Keaton Bell",
     author_email="keatonbell@utexas.edu",
-    description="Sinusoid fitting for the astronomical time domain.",
+    description="Basic period detection and fitting routines for astronomical time series.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/keatonb/Pyriod",
     install_requires=requirements,
     packages=setuptools.find_packages(),
     classifiers=[
-        "Programming Language :: Python :: 2.7",
+        "Development Status :: 3 - Alpha",
+        "Programming Language :: Python",
         "License :: OSI Approved :: GNU General Public License (GPL)",
         "Operating System :: OS Independent",
     ],
