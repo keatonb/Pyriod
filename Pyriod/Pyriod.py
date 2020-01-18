@@ -70,6 +70,8 @@ if sys.version_info < (3, 0):
     from StringIO import StringIO
 else:
     from io import StringIO
+#from itertools import groupby
+#from operator import itemgetter
 
 #Third party imports
 import numpy as np
@@ -82,7 +84,9 @@ from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
 #from IPython.display import display
 from bs4 import BeautifulSoup
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
+from matplotlib.widgets import LassoSelector
+from matplotlib.path import Path
 import ipywidgets as widgets
 from ipywidgets import HBox,VBox
 import qgrid
@@ -107,6 +111,41 @@ class Capturing(list):
         self.extend(self._stringio.getvalue().splitlines())
         del self._stringio    # free up some memory
         sys.stdout = self._stdout
+        
+class lasso_selector(object):
+    """Select indices from a matplotlib collection using `LassoSelector`.
+    
+    Outline selected points with given color, otherwise don't outline
+    
+    Based on Lasso Selector Demo
+    https://matplotlib.org/3.1.1/gallery/widgets/lasso_selector_demo_sgskip.html
+    """
+    def __init__(self, ax, collection, color='gold'):
+        self.canvas = ax.figure.canvas
+        self.collection = collection
+        self.color = color
+        
+        self.xys = collection.get_offsets()
+        self.Npts = len(self.xys)
+        
+        self.lasso = LassoSelector(ax, onselect=self.onselect)
+        self.ind = []
+    def onselect(self, verts):
+        path = Path(verts)
+        self.ind = np.nonzero(path.contains_points(self.xys))[0]
+        
+        ec = np.array(["None" for i in range(self.Npts)])
+        ec[self.ind] = self.color
+        self.collection.set_edgecolors(ec)
+        self.canvas.draw_idle()
+    def update(self,collection):
+        self.collection = collection
+        self.xys = collection.get_offsets()
+    def disconnect(self):
+        self.lasso.disconnect_events()
+        ec = np.array(["None" for i in range(self.Npts)])
+        self.collection.set_edgecolors(ec)
+        self.canvas.draw_idle()
 
 class Pyriod(object):
     """Time series periodic analysis class.
@@ -157,20 +196,32 @@ class Pyriod(object):
         #Apply time shift to get phases to be well behaved
         self.tshift = -np.mean(self.lc_orig.time)
         
+        #Determine frequency resolution
+        self.fres = 1./np.ptp(self.lc_orig.time)
+        
         #Initialize time series widgets and plots
         self._init_timeseries_widgets()
         self.lcfig,self.lcax = plt.subplots(figsize=(7,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_xlabel("time")
         self.lcax.set_ylabel("rel. variation")
         self.lcax.set_position([0.13,0.22,0.85,0.76])
-        self.lcplot_data, = self.lcax.plot(self.lc_orig.time,self.lc_orig.flux,marker='o',ls='None',ms=1)
+        self._lc_colors = {0:"bisque",1:"C0"}
+        self.lcplot_data = self.lcax.scatter(self.lc_orig.time,self.lc_orig.flux,marker='o',
+                                             s=5, ec='None', lw=1, c=self._lc_colors[1])
+        #self.lcplot_data, = self.lcax.plot(self.lc_orig.time,self.lc_orig.flux,marker='o',ls='None',ms=1)
+        self.selector = lasso_selector(self.lcax, self.lcplot_data)
+        #Mask user-selected points
+        self.mask = np.ones(len(self.lc_orig)) # 1 = include
+        self.include = np.where(self.mask)
+        self.lcfig.canvas.mpl_connect("key_press_event", self._mask_selected_pts)
+        
         #Also plot the model over the time series
         dt = np.median(np.diff(self.lc_orig.time))
         time_samples = np.arange(np.min(self.lc_orig.time),
                                  np.max(self.lc_orig.time)+dt/oversample_factor,dt/oversample_factor)
         initmodel = np.zeros(len(time_samples))+np.mean(self.lc_orig.flux)
         self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
-        initmodel = np.zeros(len(self.lc_orig.time))+np.mean(self.lc_orig.flux)
+        initmodel = np.zeros(len(self.lc_orig.time))+np.mean(self.lc_orig.flux[self.include])
         self.lc_model_observed = lk.LightCurve(time=self.lc_orig.time,flux=initmodel)
         
         self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time,
@@ -186,7 +237,7 @@ class Pyriod(object):
         # Each is stored as, e.g., "per_orig", samples at self.freqs
         # Has associated plot _perplot_orig
         # Display toggle widget _perplot_orig_display
-        # And color picker _perplot_orig_color
+        # TODO: Add color picker _perplot_orig_color
         
         #Initialize widgets
         self._init_periodogram_widgets()
@@ -198,9 +249,6 @@ class Pyriod(object):
         
         #Define frequency sampling
         
-        #Determine frequency resolution
-        self.fres = 1./(self.lc_orig.time[-1]-self.lc_orig.time[0])
-        self._fold_on.step = self.fres #let fold_on step by freq res
         #And the Nyquist (approximate for unevenly sampled data)
         self.nyq = 1./(2.*dt*self.freq_conversion)
         #Sample the following frequencies:
@@ -285,6 +333,14 @@ class Pyriod(object):
     
     def _init_timeseries_widgets(self):
         ### Time Series widget stuff  ###
+        self._reset_mask = widgets.Button(
+            description='Reset mask',
+            disabled=False,
+            tooltip='Include all points in calculations',
+            icon='refresh'
+        )
+        self._reset_mask.on_click(self._clear_mask) 
+        
         self._tstype = widgets.Dropdown(
             options=['Original', 'Residuals'],
             value='Original',
@@ -295,6 +351,7 @@ class Pyriod(object):
         
         self._fold = widgets.Checkbox(
             value=False,
+            step=self.fres,
             description='Fold time series on frequency?',
         )
         self._fold.observe(self._update_lc_display)
@@ -641,7 +698,7 @@ class Pyriod(object):
         model = np.sum([signals[prefixmap[prefix]] for prefix in self.values.index[self.values.include]])
         
         #compute fixed-frequency fit
-        result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time+self.tshift)
+        result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), params, x=self.lc_orig.time[self.include]+self.tshift)
         
         #refine, allowing freq to vary (unless fixed by user)
         params = result.params
@@ -652,7 +709,7 @@ class Pyriod(object):
                 params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
                 params[prefixmap[prefix]+'phase'].set(result.params[prefixmap[prefix]+'phase'].value)
         
-        result = model.fit(self.lc_orig.flux-np.mean(self.lc_orig.flux), params, x=self.lc_orig.time+self.tshift)
+        result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), params, x=self.lc_orig.time[self.include]+self.tshift)
         self.log("Fit refined.")  
         self.log("Fit properties:"+result.fit_report())
         
@@ -708,19 +765,21 @@ class Pyriod(object):
         self._update_pers()
         self._update_freq_dropdown()
         
-    def _update_lcs(self):
-        #Update time series models
-        self.lc_model_sampled.flux = np.zeros(len(self.lc_model_sampled))+np.mean(self.lc_orig.flux)
-        self.lc_model_observed.flux = np.zeros(len(self.lc_orig.time))+np.mean(self.lc_orig.flux)
-        
+    def sample_model(self,time):
+        flux = np.zeros(len(time))
         for prefix in self.values.index:
             freq = float(self.values.loc[prefix,'freq'])
             amp = float(self.values.loc[prefix,'amp'])
             phase = float(self.values.loc[prefix,'phase'])
-            self.lc_model_sampled += sin(self.lc_model_sampled.time,
-                                              freq*self.freq_conversion,amp,phase)
-            self.lc_model_observed += sin(self.lc_model_observed.time,
-                                               freq*self.freq_conversion,amp,phase)
+            flux += sin(time,freq*self.freq_conversion,amp,phase)
+        return flux
+    
+    def _update_lcs(self):
+        #Update time series models
+        meanflux = np.mean(self.lc_orig.flux[self.include])
+        self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time)
+        #Observed is at all original times (apply mask before calculations)
+        self.lc_model_observed.flux = meanflux + self.sample_model(self.lc_orig.time)
         self.lc_resid = self.lc_orig - self.lc_model_observed
     
     def _qgrid_changed_manually(self, *args):
@@ -813,58 +872,74 @@ class Pyriod(object):
         
     #change type of time series being displayed
     def _update_lc_display(self, *args):
-        displaytype = self._tstype.value
-        updatedisplay = {"Original":self._display_original_lc,
-                         "Residuals":self._display_residuals_lc}
-        updatedisplay[displaytype]()
-        
+        self._display_lc(residuals = (self._tstype.value == "Residuals"))
         
     def _update_signal_markers(self):
         subnyquistfreqs = subfreq(self.values['freq'].astype('float'),self.nyq)
         self.signal_markers.set_data(subnyquistfreqs,self.values['amp']*self.amp_conversion)
         self.perfig.canvas.draw()
         
-    def _display_original_lc(self):
-        self.lcplot_data.set_ydata(self.lc_orig.flux)
-        self.lcplot_model.set_ydata(self.lc_model_sampled.flux)
+    def _display_lc(self,residuals=False):
+        lc = self.lc_orig
+        if residuals:
+            lc = self.lc_resid
+            self.lcplot_model.set_ydata(np.zeros(len(self.lc_model_sampled.flux)))
+        else:
+            self.lcplot_model.set_ydata(self.lc_model_sampled.flux)
         #rescale y to better match data
-        ymin = np.min([np.min(self.lc_orig.flux),np.min(self.lc_model_sampled.flux)])
-        ymax = np.max([np.max(self.lc_orig.flux),np.max(self.lc_model_sampled.flux)])
+        ymin = np.min(lc.flux[self.include])
+        ymax = np.max(lc.flux[self.include])
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         #fold if requested
         if self._fold.value:
-            self.lcplot_data.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
+            xdata=lc.time*self._fold_on.value*self.freq_conversion % 1.
+            self.lcplot_data.set_offsets(np.dstack((xdata,lc.flux))[0])
             self.lcplot_model.set_alpha(0)
-            self.lcax.set_xlim(0,1)
+            self.lcax.set_xlim(-0.01,1.01)
         else:
-            self.lcplot_data.set_xdata(self.lc_orig.time)
+            self.lcplot_data.set_offsets(np.dstack((lc.time,lc.flux))[0])
             self.lcplot_model.set_alpha(1)
-            self.lcax.set_xlim(np.min(self.lc_orig.time),np.max(self.lc_orig.time))
+            tspan = np.ptp(lc.time)
+            self.lcax.set_xlim(np.min(lc.time)-0.01*tspan,np.max(lc.time)+0.01*tspan)
+        self.selector.update(self.lcplot_data)
         self.lcfig.canvas.draw()
-        
-    def _display_residuals_lc(self):
-        self.lcplot_data.set_ydata(self.lc_resid.flux)
-        self.lcplot_model.set_ydata(np.zeros(len(self.lc_model_sampled.flux)))
-        ymin = np.min(self.lc_resid.flux)
-        ymax = np.max(self.lc_resid.flux)
-        self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
-        #fold if requested
-        if self._fold.value:
-            self.lcplot_data.set_xdata(self.lc_orig.time*self._fold_on.value*self.freq_conversion % 1.)
-            self.lcplot_model.set_alpha(0)
-            self.lcax.set_xlim(0,1)
-        else:
-            self.lcplot_data.set_xdata(self.lc_orig.time)
-            self.lcplot_model.set_alpha(1)
-            self.lcax.set_xlim(np.min(self.lc_orig.time),np.max(self.lc_orig.time))
-        self.lcfig.canvas.draw()
+    
+    def _mask_selected_pts(self,event):
+        if event.key in ["backspace","delete"] and (len(self.selector.ind) > 0):
+            #ranges =[]
+            #for k,g in groupby(enumerate(np.sort(self.selector.ind)),lambda x:x[0]-x[1]):
+            #    group = (map(itemgetter(1),g))
+            #    group = list(map(int,group))
+            #    ranges.append((group[0],group[-1]))
+            #self.log("Masking {} points in index ranges: {}".format(len(self.selector.ind),ranges))
+            self.log("Masking {} selected points.")
+            self.mask[self.selector.ind] = 0
+            self._mask_changed()
+            
+    def _clear_mask(self,b):
+        self.log("Restoring all masked points.")
+        self.mask[:] = 1
+        self._mask_changed()
+            
+    def _mask_changed(self):
+        self.include = np.where(self.mask)
+        self.selector.ind = []
+        self.lcplot_data.set_facecolors([self._lc_colors[m] for m in self.mask])
+        self.lcplot_data.set_edgecolors("None")
+        self._update_lcs()
+        self._update_lc_display()
+        #self.lcfig.canvas.draw()
+        self.per_orig = self.lc_orig[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
+                                                                  frequency=self.freqs)*self.amp_conversion
+        self.perplot_orig.set_ydata(self.per_orig.power.value)
+        self._update_pers()
     
     
     def _update_pers(self):
-        self.per_model = self.lc_model_observed.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
+        self.per_model = self.lc_model_observed[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
                                                frequency=self.freqs)*self.amp_conversion
         self.perplot_model.set_ydata(self.per_model.power.value)
-        self.per_resid = self.lc_resid.to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
+        self.per_resid = self.lc_resid[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
                                                frequency=self.freqs)*self.amp_conversion
         self.perplot_resid.set_ydata(self.per_resid.power.value)
         self.perfig.canvas.draw()
@@ -936,7 +1011,7 @@ class Pyriod(object):
         
         
     def TimeSeries(self):
-        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq])],selected_index=None)
+        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask])],selected_index=None)
         options.set_title(0, 'options')
         return VBox([self.lcfig.canvas,options])
     
