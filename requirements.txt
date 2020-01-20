@@ -1,7 +1,7 @@
 numpy
 pandas
 scipy
-lightkurve
+lightkurve >= 1.6.0
 lmfit
 bs4
 matplotlib
