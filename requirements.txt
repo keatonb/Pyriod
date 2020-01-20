@@ -1,10 +1,10 @@
-numpy
-pandas
-scipy
-lightkurve >= 1.6.0
-lmfit
+numpy>=1.11
+pandas>=0.25
+scipy>=0.19
+lightkurve>=1.6.0
+lmfit>=1.0
 bs4
-matplotlib
-ipympl
-ipywidgets
-qgrid
+matplotlib>=1.5.3
+ipympl>=0.4.1
+ipywidgets>=7.5
+qgrid>=1.2
