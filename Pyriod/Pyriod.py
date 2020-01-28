@@ -767,7 +767,7 @@ class Pyriod(object):
         
     def sample_model(self,time):
         flux = np.zeros(len(time))
-        for prefix in self.values.index:
+        for prefix in self.values.index[self.values.include]:
             freq = float(self.values.loc[prefix,'freq'])
             amp = float(self.values.loc[prefix,'amp'])
             phase = float(self.values.loc[prefix,'phase'])
@@ -875,8 +875,8 @@ class Pyriod(object):
         self._display_lc(residuals = (self._tstype.value == "Residuals"))
         
     def _update_signal_markers(self):
-        subnyquistfreqs = subfreq(self.values['freq'].astype('float'),self.nyq)
-        self.signal_markers.set_data(subnyquistfreqs,self.values['amp']*self.amp_conversion)
+        subnyquistfreqs = subfreq(self.values['freq'][self.values.include].astype('float'),self.nyq)
+        self.signal_markers.set_data(subnyquistfreqs,self.values['amp'][self.values.include]*self.amp_conversion)
         self.perfig.canvas.draw()
         
     def _display_lc(self,residuals=False):
