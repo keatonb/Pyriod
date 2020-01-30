@@ -633,40 +633,62 @@ class Pyriod(object):
         except Exception:
             pass
     
-    def _next_signal_index(self):
-        #Get next unused independent signal index
+    def _next_signal_index(self,n=1):
+        #Get next n unused independent signal indices
+        inds = []
         i=0
-        while "f{}".format(i) in self.values.index:
+        while len(inds) < n:
+            if not "f{}".format(i) in self.values.index:
+                inds.append("f{}".format(i))
             i+=1
-        return "f{}".format(i)
+        return inds
     
     #Functions for interacting with model fit
-    def _make_all_iter(variables):
+    def _make_all_iter(self, variables):
         """Return iterables of given variables
-
+    
         Parameters
         ----------
         variables : list or tuple
-            Set of values to returned as iterables if necessary
-
+            Set of values to returned as iterables if necessary.
+            Each must have length 1 or length of first variable
         Returns
         -------
         tuple of iterable versions of input variables
         """
+        #wrap all single values or strings in lists
+        variables = [[v] if (not hasattr(v, '__iter__')) or (type(v) == str) else v for v in variables]
+        #Get length of first variable
+        nvals = len(variables[0])
+        #check that all lengths are the same or 1
+        if not all([len(l) in [nvals,1] for l in variables]):
+            raise ValueError("Arguments passed have inconsistent lengths.")
+        else:
+            variables = [[v[0] for i in range(nvals)] if (len(v) == 1) else v for v in variables]
+        return tuple(variables)
     
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False, include=True, index=None):
-        if amp is None:
-            amp = 1.
-        if phase is None:
-            phase = 0.5
-        #list of iterables required to pass to dataframe without an index
-        newvalues = [[nv] for nv in [freq,fixfreq,amp/self.amp_conversion,fixamp,phase,fixphase,include]]
+        freq,amp,phase,fixfreq,fixamp,fixphase,include,index = self._make_all_iter([freq,amp,phase,fixfreq,fixamp,fixphase,include,index])
         colnames = ["freq","fixfreq","amp","fixamp","phase","fixphase","include"]
-        if index == None:
-            index = self._next_signal_index()
-        toappend = pd.DataFrame(dict(zip(colnames,newvalues)),columns=self.columns,
-                                index=[index])
+        newvalues = [nv for nv in [freq,fixfreq,amp,fixamp,phase,fixphase,include]]
+        dictvals = dict(zip(colnames,newvalues))
+        for i in range(len(freq)):
+            if dictvals["amp"][i] is None:
+                dictvals["amp"][i] = 1.
+            else:
+                dictvals["amp"][i] /= self.amp_conversion
+            if dictvals["phase"][i] is None:
+                dictvals["phase"][i] = 0.5
+        #Replace all None indices with next available
+        noneindex = np.where([ind is None for ind in index])[0]
+        newindices = self._next_signal_index(n=len(noneindex))
+        for i in range(len(noneindex)):
+            index[noneindex[i]] = newindices[i]
+        #Check that all indices are unique and none already used
+        if (len(index) != len(set(index))) or any([ind in self.values.index for ind in index]):
+            raise ValueError("Duplicate indices provided.")
+        toappend = pd.DataFrame(dictvals,columns=self.columns,index=index)
         self.values = self.values.append(toappend,sort=False)
         self._update_freq_dropdown() #For folding time series
         displayframe = self.values.copy()[self.columns[:-1]]
@@ -675,24 +697,31 @@ class Pyriod(object):
         #self.signals_qgrid.df.columns = self.columns[:-1]
         self._update_signal_markers()
         self.log("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
+    
+    def _valid_combo(self,combostr):
+        parts = re.split('\+|\-|\*|\/',combostr.replace(" ", "").lower())
+        allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
+        return allvalid and (len(parts) > 1)
         
     #operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
     #             ast.Div: op.truediv,ast.USub: op.neg}
     def add_combination(self, combostr, amp=None, phase=None, fixfreq=False, 
-                   fixamp=False, fixphase=False, index=None):
-        combostr = combostr.replace(" ", "").lower()
-        #evaluate combostring:
-        #replace keys with values
-        parts = re.split('\+|\-|\*|\/',combostr)
-        keys = set([part for part in parts if part in self.values.index])
-        expression = combostr
-        for key in keys:
-            expression = expression.replace(key, str(self.values.loc[key,'freq']))
-        freqval = eval(expression)
-        if amp == None:
-            amp = self.interpls(subfreq(freqval,self.nyq)[0])
-        self.add_signal(freqval,amp,index=combostr)
-        self.log("Combination {} added to model.".format(combostr))
+                   fixamp=False, fixphase=False, include=True, index=None):
+        combostr,amp,phase,fixfreq,fixamp,fixphase,include,index = self._make_all_iter([combostr,amp,phase,fixfreq,fixamp,fixphase,include,index])
+        freq = np.zeros(len(combostr))
+        for i in range(len(combostr)):
+            combostr[i] = combostr[i].replace(" ", "").lower()
+            #evaluate combostring:
+            #replace keys with values
+            parts = re.split('\+|\-|\*|\/',combostr[i])
+            keys = set([part for part in parts if part in self.values.index])
+            expression = combostr[i]
+            for key in keys:
+                expression = expression.replace(key, str(self.values.loc[key,'freq']))
+            freq[i] = eval(expression)
+            if amp[i] == None:
+                amp[i] = self.interpls(subfreq(freq[i],self.nyq)[0])
+        self.add_signal(list(freq),amp,phase,fixfreq,fixamp,fixphase,include,index=combostr)
         
     def fit_model(self, *args):
         """ 
@@ -906,16 +935,10 @@ class Pyriod(object):
         #Is this a valid numeric frequency?
         if self._thisfreq.value.replace('.','',1).isdigit():
             self.add_signal(float(self._thisfreq.value),self._thisamp.value)
+        elif self._valid_combo(self._thisfreq.value):
+            self.add_combination(self._thisfreq.value)
         else:
-            parts = re.split('\+|\-|\*|\/',self._thisfreq.value.replace(" ", ""))
-            allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
-            #Is it a valid combination frequency?
-            if allvalid and (len(parts) > 1):
-                #will guess amplitude from periodogram
-                self.add_combination(self._thisfreq.value)
-            #Otherwise issue a warning
-            else:
-                self.log("Staged frequency has invalid format: {}".format(self._thisfreq.value),"error")
+            self.log("Staged frequency has invalid format: {}".format(self._thisfreq.value),"error")
         
     #change type of time series being displayed
     def _update_lc_display(self, *args):
