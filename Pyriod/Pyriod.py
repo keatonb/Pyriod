@@ -1183,4 +1183,10 @@ class Pyriod(object):
     def _save_perfig_button_click(self, *args):
         self.save_perfig(self._perfig_file_location.value)
         
+    def close_figures(self):
+        """Close all figures beloning to this class.
         
+        Warning: interacting with figures will no longer work.
+        """
+        plt.close(self.lcfig)
+        plt.close(self.perfig)
