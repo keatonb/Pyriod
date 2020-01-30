@@ -333,6 +333,23 @@ class Pyriod(object):
     
     def _init_timeseries_widgets(self):
         ### Time Series widget stuff  ###
+        self._tsfig_file_location = widgets.Text(
+            value='Pyriod_TimeSeries.png',
+            placeholder='File name to write figure to',
+            tooltip='Path of figure file to write to.',
+            description='Fig location:',
+            disabled=False
+        )
+                
+        self._save_tsfig = widgets.Button(
+            description="Save",
+            disabled=False,
+            #button_style='success', # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Save currently displayed figure to file.',
+            icon='save'
+        )
+        self._save_tsfig.on_click(self._save_tsfig_button_click)
+        
         self._reset_mask = widgets.Button(
             description='Reset mask',
             disabled=False,
@@ -370,6 +387,23 @@ class Pyriod(object):
     
     def _init_periodogram_widgets(self):
         ### Periodogram widget stuff  ###
+        self._perfig_file_location = widgets.Text(
+            value='Pyriod_Periodogram.png',
+            placeholder='File name to write figure to',
+            tooltip='Path of figure file to write to.',
+            description='Fig location:',
+            disabled=False
+        )
+                
+        self._save_perfig = widgets.Button(
+            description="Save",
+            disabled=False,
+            #button_style='success', # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Save currently displayed figure to file.',
+            icon='save'
+        )
+        self._save_perfig.on_click(self._save_perfig_button_click)
+        
         self._thisfreq = widgets.Text(
             value='',
             placeholder='',
@@ -497,7 +531,7 @@ class Pyriod(object):
         )
         self._delete.on_click(self._delete_selected)
         
-        self._file_location = widgets.Text(
+        self._signals_file_location = widgets.Text(
             value='Pyriod_solution.csv',
             placeholder='csv file to read/write',
             tooltip='Path of csv file to write to or read from.',
@@ -607,6 +641,19 @@ class Pyriod(object):
         return "f{}".format(i)
     
     #Functions for interacting with model fit
+    def _make_all_iter(variables):
+        """Return iterables of given variables
+
+        Parameters
+        ----------
+        variables : list or tuple
+            Set of values to returned as iterables if necessary
+
+        Returns
+        -------
+        tuple of iterable versions of input variables
+        """
+    
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
                    fixamp=False, fixphase=False, include=True, index=None):
         if amp is None:
@@ -996,24 +1043,27 @@ class Pyriod(object):
             self.update_marker(self.freqs[highestind],ydata[highestind])
         else:
             self.update_marker(event.xdata,self.interpls(event.xdata))
-        
+            
+    def TimeSeries(self):
+        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask])],selected_index=None)
+        options.set_title(0, 'options')
+        savefig = HBox([self._save_tsfig,self._tsfig_file_location])
+        return VBox([self.lcfig.canvas,savefig,options])
+       
     def Periodogram(self):
         options = widgets.Accordion(children=[VBox([self._snaptopeak,self._show_per_markers,
                         self._show_per_orig,self._show_per_resid,
                         self._show_per_model,self._show_per_sw])],selected_index=None)
         options.set_title(0, 'options')
-        
+        savefig = HBox([self._save_perfig,self._perfig_file_location])
         periodogram = VBox([HBox([self._thisfreq,self._thisamp]),
                         HBox([self._addtosol,self._refit]),
                         self.perfig.canvas,
+                        savefig,
                         options])
         return periodogram
         
         
-    def TimeSeries(self):
-        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask])],selected_index=None)
-        options.set_title(0, 'options')
-        return VBox([self.lcfig.canvas,options])
     
     #This one shows all the tabs
     def Pyriod(self):
@@ -1057,7 +1107,7 @@ class Pyriod(object):
     def Signals(self):
         return VBox([HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
                 self.signals_qgrid,
-                HBox([self._save,self._load,self._file_location])])
+                HBox([self._save,self._load,self._signals_file_location])])
         
     def Log(self):
         return self._logbox
@@ -1070,7 +1120,7 @@ class Pyriod(object):
         self.signals_qgrid.df.to_csv(filename,index_label='label')
         
     def _save_button_click(self, *args):
-        self.save_solution(filename=self._file_location.value)
+        self.save_solution(filename=self._signals_file_location.value)
     
     def load_solution(self,filename='Pyriod_solution.csv'):
         loaddf = pd.read_csv(filename,index_col='label')
@@ -1082,7 +1132,7 @@ class Pyriod(object):
         self._update_values_from_qgrid()
         
     def _load_button_click(self, *args):
-        self.load_solution(filename=self._file_location.value)
+        self.load_solution(filename=self._signals_file_location.value)
         
     def _save_log_button_click(self, *args):
         self.save_log(self._log_file_location.value,self._overwrite.value)
@@ -1097,3 +1147,17 @@ class Pyriod(object):
         f = open(filename, mode)
         f.write(soup.get_text().replace('|', ''))
         f.close()
+        
+    def save_tsfig(self,filename='Pyriod_TimeSeries.png',**kwargs):
+        self.lcfig.savefig(filename,**kwargs)
+        
+    def _save_tsfig_button_click(self, *args):
+        self.save_tsfig(self._tsfig_file_location.value)
+        
+    def save_perfig(self,filename='Pyriod_Periodogram.png',**kwargs):
+        self.perfig.savefig(filename,**kwargs)
+        
+    def _save_perfig_button_click(self, *args):
+        self.save_perfig(self._perfig_file_location.value)
+        
+        
