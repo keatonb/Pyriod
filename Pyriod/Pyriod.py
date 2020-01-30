@@ -84,6 +84,7 @@ from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
 #from IPython.display import display
 from bs4 import BeautifulSoup
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.widgets import LassoSelector
 from matplotlib.path import Path
@@ -308,7 +309,6 @@ class Pyriod(object):
         self.perfig.canvas.mpl_connect('motion_notify_event', self.onmove)
         
         
-        
         ### SIGNALS ###
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
@@ -326,7 +326,9 @@ class Pyriod(object):
         #Write lightkurve and periodogram properties to log
         self._log_lc_properties()
         self._log_per_properties()
-    
+        
+        #Create some decoy figure so users don't accidentally plot over the Pyriod ones
+        _ = plt.figure()
     
     ###### Run initialization functions #######
     
