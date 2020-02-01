@@ -755,7 +755,9 @@ class Pyriod(object):
                     params.update(signals[prefix].make_params())
                     params[prefix+'freq'].set(self.freq_conversion*self.values.freq[prefix], vary=False)
                     params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
-                    params[prefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
+                    #Correct phase for tdiff
+                    thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
+                    params[prefix+'phase'].set(thisphase, vary=~self.values.fixphase[prefix])
                     prefixmap[prefix] = prefix
                 else: #combination
                     useprefix = 'c{}'.format(cnum)
@@ -768,7 +770,8 @@ class Pyriod(object):
                         expression = expression.replace(key, key+'freq')
                     params[useprefix+'freq'].set(expr=expression)
                     params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
-                    params[useprefix+'phase'].set(self.values.phase[prefix], vary=~self.values.fixphase[prefix])
+                    thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
+                    params[useprefix+'phase'].set(thisphase, vary=~self.values.fixphase[prefix])
                     prefixmap[prefix] = useprefix
                     cnum+=1
         
