@@ -78,13 +78,13 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
-from astropy.stats import LombScargle
+from astropy.timeseries import LombScargle
 import lightkurve as lk
 from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
 #from IPython.display import display
 from bs4 import BeautifulSoup
-import matplotlib as mpl
+#import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.widgets import LassoSelector
 from matplotlib.path import Path
@@ -818,7 +818,8 @@ class Pyriod(object):
         self._update_freq_dropdown()
         
         #update qgrid
-        self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
+        #self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
+        self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())[self.columns[:-1]]
         #self.signals_qgrid.df = self._convert_values_to_qgrid()[self.columns[:-1]]
         
         self._update_values_from_qgrid()
@@ -839,8 +840,8 @@ class Pyriod(object):
         self.values = self._convert_qgrid_to_values()
         
         self._update_lcs()
-        self._update_signal_markers()
         self._update_lc_display()
+        self._update_signal_markers()
         self._update_pers()
         self._update_freq_dropdown()
         
@@ -864,8 +865,10 @@ class Pyriod(object):
     def _qgrid_changed_manually(self, *args):
         #note: args has information about what changed if needed
         newdf = self.signals_qgrid.get_changed_df()
-        olddf = self.signals_qgrid.df
+        #olddf = self.signals_qgrid.df
+        olddf = self._convert_values_to_qgrid()
         logmessage = "Signals table changed manually.\n"
+        changedcols = []
         for key in newdf.index.values:
             if key in olddf.index.values:
                 changes = newdf.loc[key][olddf.loc[key] != newdf.loc[key]]
@@ -873,16 +876,20 @@ class Pyriod(object):
                     logmessage += "Values changed for {}:\n".format(key)
                 for change in changes.index:
                     logmessage += " - {} -> {}\n".format(change,changes[change])
+                    changedcols.append(change)
             else:
                 logmessage += "New row in solution table: {}\n".format(key)
                 for col in newdf.loc[key]:
                     logmessage += " - {} -> {}\n".format(change,changes[change])
         self.log(logmessage)
-        print(self.signals_qgrid.get_changed_df())
-        print(self.signals_qgrid.df)
         #self.signals_qgrid.df = self.signals_qgrid.get_changed_df().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
         #self.signals_qgrid.df.columns = self.columns[:-1]
-        self._update_values_from_qgrid()
+        
+        #Update plots only if signal values (not what is fixed) changed
+        if all([colname[:3] == 'fix' for colname in changedcols]):
+            self.values = self._convert_qgrid_to_values()
+        else:
+            self._update_values_from_qgrid()
     
     columns = ['include','freq','fixfreq','freqerr',
                'amp','fixamp','amperr',
@@ -894,7 +901,8 @@ class Pyriod(object):
     def delete_rows(self,indices):
         self.log("Deleted signals {}".format([sig for sig in indices]))
         self.values = self.values.drop(indices)
-        self.signals_qgrid.df = self.signals_qgrid.df.drop(indices)
+        #self.signals_qgrid.df = self.signals_qgrid.df.drop(indices)
+        self.signals_qgrid.df = self.signals_qgrid.get_changed_df().drop(indices)
     
     def _delete_selected(self, *args):
         self.delete_rows(self.signals_qgrid.get_selected_df().index)
@@ -928,6 +936,7 @@ class Pyriod(object):
         
     
     def _get_qgrid(self):
+        print(self.values)
         display_df = self.values[self.columns[:-1]].copy()
         display_df["amp"] *= self.amp_conversion
         display_df["amperr"] *= self.amp_conversion
@@ -1145,19 +1154,23 @@ class Pyriod(object):
         
     def save_solution(self,filename='Pyriod_solution.csv'):
         self.log("Writing signal solution to "+os.path.abspath(filename))
-        self.signals_qgrid.df.to_csv(filename,index_label='label')
+        #self.signals_qgrid.df.to_csv(filename,index_label='label')
+        self._convert_values_to_qgrid().to_csv(filename,index_label='label')
         
     def _save_button_click(self, *args):
         self.save_solution(filename=self._signals_file_location.value)
     
     def load_solution(self,filename='Pyriod_solution.csv'):
-        loaddf = pd.read_csv(filename,index_col='label')
-        loaddf.index = loaddf.index.rename(None)
-        logmessage = "Loading signal solution from "+os.path.abspath(filename)+".<br />"
-        logmessage += loaddf.to_string().replace('\n','<br />')
-        self.log(logmessage)
-        self.signals_qgrid.df = loaddf
-        self._update_values_from_qgrid()
+        if os.path.exists(filename):
+            loaddf = pd.read_csv(filename,index_col='label')
+            loaddf.index = loaddf.index.rename(None)
+            logmessage = "Loading signal solution from "+os.path.abspath(filename)+".<br />"
+            logmessage += loaddf.to_string().replace('\n','<br />')
+            self.log(logmessage)
+            self.signals_qgrid.df = loaddf
+            self._update_values_from_qgrid()
+        else:
+            self.log("Failed to load "+os.path.abspath(filename)+". File not found.<br />",level='error')
         
     def _load_button_click(self, *args):
         self.load_solution(filename=self._signals_file_location.value)
