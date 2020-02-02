@@ -1,5 +1,5 @@
 numpy>=1.11
-pandas>=0.25
+pandas==0.25
 scipy>=0.19
 lightkurve>=1.6.0
 lmfit>=1.0
