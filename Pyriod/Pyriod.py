@@ -298,27 +298,25 @@ class Pyriod(object):
         self._display_per_sw()
         self._display_per_markers()
         
-        self.mark_highest_peak()
+        self._mark_highest_peak()
         
         #This handles clicking while zooming problems
-        #self.perfig.canvas.mpl_connect('button_press_event', self.onperiodogramclick)
+        #self.perfig.canvas.mpl_connect('button_press_event', self._onperiodogramclick)
         self._press= False
         self._move = False
-        self.perfig.canvas.mpl_connect('button_press_event', self.onpress)
-        self.perfig.canvas.mpl_connect('button_release_event', self.onrelease)
-        self.perfig.canvas.mpl_connect('motion_notify_event', self.onmove)
+        self.perfig.canvas.mpl_connect('button_press_event', self._onpress)
+        self.perfig.canvas.mpl_connect('button_release_event', self._onrelease)
+        self.perfig.canvas.mpl_connect('motion_notify_event', self._onmove)
         
         
         ### SIGNALS ###
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
-        self.values = self.initialize_dataframe()
-        
-        #self.uncertainties = pd.DataFrame(columns=self.columns[::2]) #not yet used
+        self.values = self._initialize_dataframe()
         
         #The interface for interacting with the values DataFrame:
         self._init_signals_qgrid()
-        self.signals_qgrid = self.get_qgrid()
+        self.signals_qgrid = self._get_qgrid()
         self.signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
         self._init_signals_widgets()
         
@@ -796,7 +794,7 @@ class Pyriod(object):
         
         self._update_values_from_fit(result.params,prefixmap)
         
-        self.mark_highest_peak()#Mark highest peak in residuals
+        self._mark_highest_peak()#Mark highest peak in residuals
         
     def _update_values_from_fit(self,params,prefixmap):
         #update dataframe of params with new values from fit
@@ -880,7 +878,9 @@ class Pyriod(object):
                 for col in newdf.loc[key]:
                     logmessage += " - {} -> {}\n".format(change,changes[change])
         self.log(logmessage)
-        self.signals_qgrid.df = self.signals_qgrid.get_changed_df().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
+        print(self.signals_qgrid.get_changed_df())
+        print(self.signals_qgrid.df)
+        #self.signals_qgrid.df = self.signals_qgrid.get_changed_df().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
         #self.signals_qgrid.df.columns = self.columns[:-1]
         self._update_values_from_qgrid()
     
@@ -900,7 +900,7 @@ class Pyriod(object):
         self.delete_rows(self.signals_qgrid.get_selected_df().index)
         self._update_values_from_qgrid()
 
-    def initialize_dataframe(self):
+    def _initialize_dataframe(self):
         df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
         return df
     
@@ -927,7 +927,7 @@ class Pyriod(object):
     
         
     
-    def get_qgrid(self):
+    def _get_qgrid(self):
         display_df = self.values[self.columns[:-1]].copy()
         display_df["amp"] *= self.amp_conversion
         display_df["amperr"] *= self.amp_conversion
@@ -1058,7 +1058,7 @@ class Pyriod(object):
             self.signal_markers.set_alpha(0)
         self.perfig.canvas.draw()
     
-    def onperiodogramclick(self,event):
+    def _onperiodogramclick(self,event):
         if self._snaptopeak.value:
             #click within either frequency resolution or 1% of displayed range
             #TODO: make this work with log frequency too
@@ -1068,9 +1068,9 @@ class Pyriod(object):
                                  (self.freqs <= event.xdata + tolerance))
             ydata = self.perplot_resid.get_ydata()
             highestind = np.nanargmax(ydata[nearby]) + nearby[0]
-            self.update_marker(self.freqs[highestind],ydata[highestind])
+            self._update_marker(self.freqs[highestind],ydata[highestind])
         else:
-            self.update_marker(event.xdata,self.interpls(event.xdata))
+            self._update_marker(event.xdata,self.interpls(event.xdata))
             
     def TimeSeries(self):
         options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask])],selected_index=None)
@@ -1106,7 +1106,7 @@ class Pyriod(object):
         tabs.set_title(3, 'Log')
         return tabs
         
-    def update_marker(self,x,y):
+    def _update_marker(self,x,y):
         try:
             self._thisfreq.value = str(x[0])
         except:
@@ -1116,20 +1116,20 @@ class Pyriod(object):
         self.perfig.canvas.draw()
         self.perfig.canvas.flush_events()
     
-    def mark_highest_peak(self):    
-        self.update_marker(self.freqs[np.nanargmax(self.per_resid.power.value)],
+    def _mark_highest_peak(self):    
+        self._update_marker(self.freqs[np.nanargmax(self.per_resid.power.value)],
                            np.nanmax(self.per_resid.power.value))
         
-    def onclick(self,event):
-        self.onperiodogramclick(event)
-    def onpress(self,event):
+    def _onclick(self,event):
+        self._onperiodogramclick(event)
+    def _onpress(self,event):
         self._press=True
-    def onmove(self,event):
+    def _onmove(self,event):
         if self._press:
             self._move=True
-    def onrelease(self,event):
+    def _onrelease(self,event):
         if self._press and not self._move:
-            self.onclick(event)
+            self._onclick(event)
         self._press=False; self._move=False
 
     def Signals(self):
