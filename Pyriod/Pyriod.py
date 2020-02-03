@@ -194,9 +194,6 @@ class Pyriod(object):
         else:
             self.lc_orig = lk.LightCurve(time=time, flux=flux)
         
-        #Apply time shift to get phases to be well behaved
-        self.tshift = -np.mean(self.lc_orig.time)
-        
         #Determine frequency resolution
         self.fres = 1./np.ptp(self.lc_orig.time)
         
@@ -215,6 +212,9 @@ class Pyriod(object):
         self.mask = np.ones(len(self.lc_orig)) # 1 = include
         self.include = np.where(self.mask)
         self.lcfig.canvas.mpl_connect("key_press_event", self._mask_selected_pts)
+        
+        #Apply time shift to get phases to be well behaved
+        self._calc_tshift()
         
         #Also plot the model over the time series
         dt = np.median(np.diff(self.lc_orig.time))
@@ -936,7 +936,6 @@ class Pyriod(object):
         
     
     def _get_qgrid(self):
-        print(self.values)
         display_df = self.values[self.columns[:-1]].copy()
         display_df["amp"] *= self.amp_conversion
         display_df["amperr"] *= self.amp_conversion
@@ -1013,11 +1012,17 @@ class Pyriod(object):
         self._update_lcs()
         self._update_lc_display()
         #self.lcfig.canvas.draw()
+        self._calc_tshift()
         self.per_orig = self.lc_orig[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
                                                                   frequency=self.freqs)*self.amp_conversion
         self.perplot_orig.set_ydata(self.per_orig.power.value)
         self._update_pers()
     
+    def _calc_tshift(self,tshift=None):
+        if tshift is None:
+            self.tshift = -np.mean(self.lc_orig[self.include].time)
+        else:
+            self.tshift = tshift
     
     def _update_pers(self):
         self.per_model = self.lc_model_observed[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
