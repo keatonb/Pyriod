@@ -78,13 +78,14 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
-from astropy.timeseries import LombScargle
+#from astropy.timeseries import LombScargle
 import lightkurve as lk
 from lmfit import Model, Parameters
 #from lmfit.models import ConstantModel
 #from IPython.display import display
 from bs4 import BeautifulSoup
-#import matplotlib as mpl
+import matplotlib as mpl
+mpl.use('module://ipympl.backend_nbagg', force=True, warn=True)
 import matplotlib.pyplot as plt
 from matplotlib.widgets import LassoSelector
 from matplotlib.path import Path
@@ -198,7 +199,6 @@ class Pyriod(object):
         self.include = np.where(self.mask)
         
         #Establish frequency sampling
-        self.dt = np.median(np.diff(self.lc_orig.time))
         self.set_frequency_sampling(oversample_factor=oversample_factor,nyquist_factor=nyquist_factor)
         
         #Initialize time series widgets and plots
@@ -652,7 +652,8 @@ class Pyriod(object):
         None.
         """
         #Frequency resolution
-        self.fres = 1./np.ptp(self.lc_orig.time)
+        self.dt = np.median(np.diff(self.lc_orig.time[self.include]))
+        self.fres = 1./np.ptp(self.lc_orig.time[self.include])
         self.oversample_factor = oversample_factor
         self.nyquist_factor = nyquist_factor
         #Compute Nyquist frequency (approximate for unevenly sampled data)
@@ -1042,6 +1043,7 @@ class Pyriod(object):
         #self.lcfig.canvas.draw()
         self._calc_tshift()
         
+        self.set_frequency_sampling()
         self.compute_pers(orig=True)
         self._update_per_plots()
     
@@ -1063,9 +1065,9 @@ class Pyriod(object):
         self._log_per_properties()
         
     def _update_per_plots(self):
-        self.perplot_orig.set_ydata(self.per_orig.power.value)
-        self.perplot_model.set_ydata(self.per_model.power.value)
-        self.perplot_resid.set_ydata(self.per_resid.power.value)
+        self.perplot_orig.set_data(self.freqs,self.per_orig.power.value)
+        self.perplot_model.set_data(self.freqs,self.per_model.power.value)
+        self.perplot_resid.set_data(self.freqs,self.per_resid.power.value)
         self.perfig.canvas.draw()
    
     def _display_per_orig(self, *args):
