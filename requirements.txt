@@ -1,5 +1,5 @@
 numpy>=1.11
-pandas==0.25
+pandas>=1.0
 scipy>=0.19
 lightkurve>=1.6.0
 lmfit>=1.0
@@ -7,4 +7,4 @@ bs4
 matplotlib>=1.5.3
 ipympl>=0.4.1
 ipywidgets>=7.5
-qgrid>=1.2
+qgrid>=1.3
