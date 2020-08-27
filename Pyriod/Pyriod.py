@@ -282,6 +282,11 @@ class Pyriod(object):
         self.signal_markers, = self.perax.plot([],[],marker='D',fillstyle='none',
                                                linestyle='None',
                                                c=self._signal_marker_color,ms=5)
+        self._combo_marker_color = 'orange'
+        self.combo_markers, = self.perax.plot([],[],marker='D',fillstyle='none',
+                                               linestyle='None',
+                                               c=self._combo_marker_color,ms=5)
+        
         #self._makeperiodsolutionvisible()
         self._display_per_orig()
         self._display_per_resid()
@@ -736,7 +741,7 @@ class Pyriod(object):
     
     def _valid_combo(self,combostr):
         parts = re.split('\+|\-|\*|\/',combostr.replace(" ", "").lower())
-        allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])
+        allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])[0]
         return allvalid and (len(parts) > 1)
         
     #operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
@@ -749,11 +754,10 @@ class Pyriod(object):
             combostr[i] = combostr[i].replace(" ", "").lower()
             #evaluate combostring:
             #replace keys with values
-            parts = re.split('\+|\-|\*|\/',combostr[i])
+            parts = re.split('\+|\-|\*|\/',combostr[i].replace(" ", "").lower())
             keys = set([part for part in parts if part in self.values.index])
-            expression = combostr[i]
-            for key in keys:
-                expression = expression.replace(key, str(self.values.loc[key,'freq']))
+            exploded = re.split('(\+|\-|\*|\/)',combostr[i].replace(" ", "").lower())
+            expression = "".join([str(self.values.loc[val,'freq']) if val in keys else val for val in exploded])
             freq[i] = eval(expression)
             if amp[i] == None:
                 amp[i] = self.interpls(subfreq(freq[i],self.nyquist)[0])
@@ -799,9 +803,8 @@ class Pyriod(object):
                     params.update(signals[useprefix].make_params())
                     parts = re.split('\+|\-|\*|\/',prefix)
                     keys = set([part for part in parts if part in self.values.index])
-                    expression = prefix
-                    for key in keys:
-                        expression = expression.replace(key, key+'freq')
+                    exploded = re.split('(\+|\-|\*|\/)',prefix)
+                    expression = "".join([val+'freq' if val in keys else val for val in exploded])
                     params[useprefix+'freq'].set(expr=expression)
                     params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
                     thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
@@ -996,7 +999,11 @@ class Pyriod(object):
         
     def _update_signal_markers(self):
         subnyquistfreqs = subfreq(self.values['freq'][self.values.include].astype('float'),self.nyquist)
-        self.signal_markers.set_data(subnyquistfreqs,self.values['amp'][self.values.include]*self.amp_conversion)
+        amps = self.values['amp'].values[self.values.include]*self.amp_conversion
+        indep = np.array([key[1:].isdigit() for key in self.values.index[self.values.include]])
+        
+        self.signal_markers.set_data(subnyquistfreqs[np.where(indep)],amps[np.where(indep)])
+        self.combo_markers.set_data(subnyquistfreqs[np.where(~indep)],amps[np.where(~indep)])
         self.perfig.canvas.draw()
         
     def _display_lc(self,residuals=False):
@@ -1109,8 +1116,10 @@ class Pyriod(object):
     def _display_per_markers(self, *args):
         if self._show_per_markers.value:
             self.signal_markers.set_alpha(1)
+            self.combo_markers.set_alpha(1)
         else:
             self.signal_markers.set_alpha(0)
+            self.combo_markers.set_alpha(0)
         self.perfig.canvas.draw()
     
     def _onperiodogramclick(self,event):
