@@ -741,7 +741,7 @@ class Pyriod(object):
     
     def _valid_combo(self,combostr):
         parts = re.split('\+|\-|\*|\/',combostr.replace(" ", "").lower())
-        allvalid = np.all([(part in self.values.index) or [part.replace('.','',1).isdigit()] for part in parts])[0]
+        allvalid = np.all([(part in self.values.index) or part.replace('.','',1).isdigit() for part in parts])
         return allvalid and (len(parts) > 1)
         
     #operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
