@@ -91,6 +91,7 @@ from matplotlib.path import Path
 import ipywidgets as widgets
 from ipywidgets import HBox,VBox
 import qgrid
+from ipyfilechooser import FileChooser
 
 #Local imports
 from .pyquist import subfreq
@@ -322,12 +323,14 @@ class Pyriod(object):
     
     def _init_timeseries_widgets(self):
         ### Time Series widget stuff  ###
-        self._tsfig_file_location = widgets.Text(
-            value='Pyriod_TimeSeries.png',
-            placeholder='File name to write figure to',
-            tooltip='Path of figure file to write to.',
-            description='Fig location:',
-            disabled=False
+        self._tsfig_file_location = FileChooser(
+            os.getcwd(),
+            filename='Pyriod_TimeSeries.png',
+            #title='<b>FileChooser example</b>',
+            show_hidden=False,
+            select_default=True,
+            use_dir_icons=True,
+            show_only_dirs=False
         )
                 
         self._save_tsfig = widgets.Button(
@@ -376,12 +379,14 @@ class Pyriod(object):
     
     def _init_periodogram_widgets(self):
         ### Periodogram widget stuff  ###
-        self._perfig_file_location = widgets.Text(
-            value='Pyriod_Periodogram.png',
-            placeholder='File name to write figure to',
-            tooltip='Path of figure file to write to.',
-            description='Fig location:',
-            disabled=False
+        self._perfig_file_location = FileChooser(
+            os.getcwd(),
+            filename='Pyriod_Periodogram.png',
+            #title='<b>FileChooser example</b>',
+            show_hidden=False,
+            select_default=True,
+            use_dir_icons=True,
+            show_only_dirs=False
         )
                 
         self._save_perfig = widgets.Button(
@@ -520,12 +525,14 @@ class Pyriod(object):
         )
         self._delete.on_click(self._delete_selected)
         
-        self._signals_file_location = widgets.Text(
-            value='Pyriod_solution.csv',
-            placeholder='csv file to read/write',
-            tooltip='Path of csv file to write to or read from.',
-            description='File location:',
-            disabled=False
+        self._signals_file_location = FileChooser(
+            os.getcwd(),
+            filename='Pyriod_solution.csv',
+            #title='<b>FileChooser example</b>',
+            show_hidden=False,
+            select_default=True,
+            use_dir_icons=True,
+            show_only_dirs=False
         )
                 
         self._save = widgets.Button(
@@ -565,12 +572,14 @@ class Pyriod(object):
             layout={'height': '250px','width': '950px'}
         )
         
-        self._log_file_location = widgets.Text(
-            value='Pyriod_log.txt',
-            placeholder='text file to write log to',
-            tooltip='Path of text file to write to.',
-            description='File location:',
-            disabled=False
+        self._log_file_location = FileChooser(
+            os.getcwd(),
+            filename='Pyriod_log.txt',
+            #title='<b>FileChooser example</b>',
+            show_hidden=False,
+            select_default=True,
+            use_dir_icons=True,
+            show_only_dirs=False
         )
                 
         self._save_log = widgets.Button(
@@ -1195,7 +1204,7 @@ class Pyriod(object):
         self._convert_values_to_qgrid().to_csv(filename,index_label='label')
         
     def _save_button_click(self, *args):
-        self.save_solution(filename=self._signals_file_location.value)
+        self.save_solution(filename=self._signals_file_location.selected)
     
     def load_solution(self,filename='Pyriod_solution.csv'):
         if os.path.exists(filename):
@@ -1210,10 +1219,10 @@ class Pyriod(object):
             self.log("Failed to load "+os.path.abspath(filename)+". File not found.<br />",level='error')
         
     def _load_button_click(self, *args):
-        self.load_solution(filename=self._signals_file_location.value)
+        self.load_solution(filename=self._signals_file_location.selected)
         
     def _save_log_button_click(self, *args):
-        self.save_log(self._log_file_location.value,self._overwrite.value)
+        self.save_log(self._log_file_location.selected,self._overwrite.value)
         
     def save_log(self,filename,overwrite=False):
         logmessage = "Writing log to "+os.path.abspath(filename)
@@ -1230,13 +1239,13 @@ class Pyriod(object):
         self.lcfig.savefig(filename,**kwargs)
         
     def _save_tsfig_button_click(self, *args):
-        self.save_tsfig(self._tsfig_file_location.value)
+        self.save_tsfig(self._tsfig_file_location.selected)
         
     def save_perfig(self,filename='Pyriod_Periodogram.png',**kwargs):
         self.perfig.savefig(filename,**kwargs)
         
     def _save_perfig_button_click(self, *args):
-        self.save_perfig(self._perfig_file_location.value)
+        self.save_perfig(self._perfig_file_location.selected)
         
     def close_figures(self):
         """Close all figures beloning to this class.
