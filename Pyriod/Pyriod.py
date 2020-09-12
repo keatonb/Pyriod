@@ -732,9 +732,9 @@ class Pyriod(object):
         toappend = pd.DataFrame(dictvals,columns=self.columns,index=index)
         self.values = self.values.append(toappend,sort=False)
         self._update_freq_dropdown() #For folding time series
-        displayframe = self.values.copy()[self.columns[:-1]]
+        displayframe = self.values.copy()#[self.columns[:-1]]
         displayframe["amp"] = displayframe["amp"] * self.amp_conversion
-        self.signals_qgrid.df = displayframe.combine_first(self.signals_qgrid.df)[self.columns[:-1]] #Update displayed values
+        self.signals_qgrid.df = displayframe.combine_first(self.signals_qgrid.df)#[self.columns[:-1]] #Update displayed values
         #self.signals_qgrid.df.columns = self.columns[:-1]
         self._update_signal_markers()
         self.log("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
@@ -767,7 +767,7 @@ class Pyriod(object):
         """ 
         Update model to include current signals from DataFrame.
         
-        Improve fit once with all frequencies fixed, then allow to vary.
+        Improve fit once with all freqs and amps fixed, then allow to vary.
         """
         if np.sum(self.values.include.values) == 0:
             self.log("No signals to fit.",level='warning')
@@ -783,7 +783,7 @@ class Pyriod(object):
         
         prefixmap = {}
         
-        #first with frequencies fixed
+        #first with frequencies and amplitudes fixed
         #for those specified to be included in the model
         for prefix in self.values.index[self.values.include]:
             #prefix = 'f{}'.format(i+1)
@@ -792,7 +792,7 @@ class Pyriod(object):
                     signals[prefix] = Model(sin,prefix=prefix)
                     params.update(signals[prefix].make_params())
                     params[prefix+'freq'].set(self.freq_conversion*self.values.freq[prefix], vary=False)
-                    params[prefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+                    params[prefix+'amp'].set(self.values.amp[prefix], vary=False) # vary=~self.values.fixamp[prefix]
                     #Correct phase for tdiff
                     thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
                     params[prefix+'phase'].set(thisphase, vary=~self.values.fixphase[prefix])
@@ -806,7 +806,7 @@ class Pyriod(object):
                     exploded = re.split('(\+|\-|\*|\/)',prefix)
                     expression = "".join([val+'freq' if val in keys else val for val in exploded])
                     params[useprefix+'freq'].set(expr=expression)
-                    params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+                    params[useprefix+'amp'].set(self.values.amp[prefix], vary=False) #vary=~self.values.fixamp[prefix]
                     thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
                     params[useprefix+'phase'].set(thisphase, vary=~self.values.fixphase[prefix])
                     prefixmap[prefix] = useprefix
@@ -822,9 +822,10 @@ class Pyriod(object):
         params = result.params
         
         for prefix in self.values.index[self.values.include]:
+            params[prefixmap[prefix]+'amp'].set(vary=~self.values.fixamp[prefix])
             if isindep(prefix):
                 params[prefixmap[prefix]+'freq'].set(vary=~self.values.fixfreq[prefix])
-                params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
+                #params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
                 params[prefixmap[prefix]+'phase'].set(result.params[prefixmap[prefix]+'phase'].value)
         
         result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), params, x=self.lc_orig.time[self.include]+self.tshift)
@@ -858,19 +859,19 @@ class Pyriod(object):
         
         #update qgrid
         #self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
-        self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())[self.columns[:-1]]
+        self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())#[self.columns[:-1]]
         #self.signals_qgrid.df = self._convert_values_to_qgrid()[self.columns[:-1]]
         
         self._update_values_from_qgrid()
     
     def _convert_values_to_qgrid(self):
-        tempdf = self.values.copy()[self.columns[:-1]]
+        tempdf = self.values.copy()#[self.columns[:-1]]
         tempdf["amp"] *= self.amp_conversion
         tempdf["amperr"] *= self.amp_conversion
         return tempdf
     
     def _convert_qgrid_to_values(self):
-        tempdf = self.signals_qgrid.get_changed_df().copy()
+        tempdf = self.signals_qgrid.get_changed_df().copy().astype(dtype=dict(zip(self.columns,self.dtypes)))
         tempdf["amp"] /= self.amp_conversion
         tempdf["amperr"] /= self.amp_conversion
         return tempdf
@@ -933,10 +934,10 @@ class Pyriod(object):
     
     columns = ['include','freq','fixfreq','freqerr',
                'amp','fixamp','amperr',
-               'phase','fixphase','phaseerr','combo']
+               'phase','fixphase','phaseerr']
     dtypes = ['bool','object','bool','float',
               'float','bool','float',
-              'float','bool','float','bool']
+              'float','bool','float']
     
     def delete_rows(self,indices):
         self.log("Deleted signals {}".format([sig for sig in indices]))
@@ -976,7 +977,7 @@ class Pyriod(object):
         
     
     def _get_qgrid(self):
-        display_df = self.values[self.columns[:-1]].copy()
+        display_df = self.values.copy()
         display_df["amp"] *= self.amp_conversion
         display_df["amperr"] *= self.amp_conversion
         return qgrid.show_grid(display_df, show_toolbar=False, precision = 9,
