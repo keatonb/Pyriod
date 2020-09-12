@@ -4,8 +4,8 @@ scipy>=0.19
 lightkurve>=1.6.0
 lmfit>=1.0
 bs4
-matplotlib==3.2.2
-ipympl>=0.4.1
+matplotlib>=3.2.2
+ipympl>=0.5.8
 ipywidgets>=7.5
 qgrid>=1.3
 ipyfilechooser>=0.3.5
