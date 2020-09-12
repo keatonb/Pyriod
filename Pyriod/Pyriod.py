@@ -912,7 +912,7 @@ class Pyriod(object):
         for key in newdf.index.values:
             if key in olddf.index.values:
                 changes = newdf.loc[key][olddf.loc[key] != newdf.loc[key]]
-                if len(changes > 0):
+                if len(changes) > 0:
                     logmessage += "Values changed for {}:\n".format(key)
                 for change in changes.index:
                     logmessage += " - {} -> {}\n".format(change,changes[change])
