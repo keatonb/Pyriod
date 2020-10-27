@@ -173,6 +173,9 @@ class Pyriod(object):
         self.amp_unit = amp_unit
         self.amp_conversion = {'relative':1e0, 'percent':1e2, 'ppt':1e3, 'ppm':1e6, 'mma':1e3}[self.amp_unit]
         
+        #Create status widget to indicate when calculations are running
+        self._status = widgets.HTML(value="")
+        
         ### LOG ###
         #Initialize this first and keep track of every important action taken
         self._init_log()
@@ -587,7 +590,7 @@ class Pyriod(object):
             use_dir_icons=True,
             show_only_dirs=False
         )
-                
+        
         self._save_log = widgets.Button(
             description="Save",
             disabled=False,
@@ -765,6 +768,22 @@ class Pyriod(object):
                 amp[i] = self.interpls(subfreq(freq[i],self.nyquist)[0])
         self.add_signal(list(freq),amp,phase,fixfreq,fixamp,fixphase,include,index=combostr)
         
+    def _brute_phase_est(self,freq,amp,brute_step=0.1):
+        """
+        Fit single sinusoid to residuals, sampling crudely in phase.
+        
+        Returns rough phase estimate.
+        """
+        model = Model(sin)
+        params = model.make_params()
+        params['freq'].set(self.freq_conversion*freq, vary=False)
+        params['amp'].set(amp, vary=False) 
+        params['phase'].set(0.5, vary=True, min=0, max=1, brute_step=brute_step)
+        result = model.fit(self.lc_resid.flux[self.include]-np.mean(self.lc_resid.flux[self.include]), 
+                               params, x=self.lc_resid.time[self.include]+self.tshift, 
+                               method='brute')
+        return result.params['phase'].value
+        
     def fit_model(self, *args):
         """ 
         Update model to include current signals from DataFrame.
@@ -774,6 +793,9 @@ class Pyriod(object):
         if np.sum(self.values.include.values) == 0:
             self.log("No signals to fit.",level='warning')
             return # nothing to fit
+        
+        #Indicate that a calculation is running
+        self._update_status()
         
         #Set up lmfit model for fitting
         signals = {} #empty dict to be populated
@@ -785,74 +807,57 @@ class Pyriod(object):
         
         prefixmap = {}
         
-        #are there any new signals to fit phases for?
-        newsignals = False
-        
-        #first with frequencies and amplitudes fixed
-        #for those specified to be included in the model
+        #Set up model to fit (for included signals only)
+        #Estimate phase for new signals with _brute_phase_est
         for prefix in self.values.index[self.values.include]:
-            #prefix = 'f{}'.format(i+1)
-            #freqkeys.append(prefix)
-                if isindep(prefix):
-                    signals[prefix] = Model(sin,prefix=prefix)
-                    params.update(signals[prefix].make_params())
-                    params[prefix+'freq'].set(self.freq_conversion*self.values.freq[prefix], vary=False)
-                    params[prefix+'amp'].set(self.values.amp[prefix], vary=False) # vary=~self.values.fixamp[prefix]
-                    #Correct phase for tdiff
-                    if np.isnan(self.values.phase[prefix]):
-                        newsignals = True
-                        params[prefix+'phase'].set(0.5, vary=True, min=0, max=1, brute_step=0.1)
-                    else:
-                        thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
-                        params[prefix+'phase'].set(thisphase, vary=False)
-                    prefixmap[prefix] = prefix
-                else: #combination
-                    useprefix = 'c{}'.format(cnum)
-                    signals[useprefix] = Model(sin,prefix=useprefix)
-                    params.update(signals[useprefix].make_params())
-                    parts = re.split('\+|\-|\*|\/',prefix)
-                    keys = set([part for part in parts if part in self.values.index])
-                    exploded = re.split('(\+|\-|\*|\/)',prefix)
-                    expression = "".join([val+'freq' if val in keys else val for val in exploded])
-                    params[useprefix+'freq'].set(expr=expression)
-                    params[useprefix+'amp'].set(self.values.amp[prefix], vary=False) #vary=~self.values.fixamp[prefix]
-                    if np.isnan(self.values.phase[prefix]):
-                        newsignals = True
-                        params[useprefix+'phase'].set(0.5, vary=True, min=0, max=1, brute_step=0.1)
-                    else:
-                        thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
-                        params[useprefix+'phase'].set(thisphase, vary=False)
-                    prefixmap[prefix] = useprefix
-                    cnum+=1
+            if isindep(prefix):
+                signals[prefix] = Model(sin,prefix=prefix)
+                params.update(signals[prefix].make_params())
+                params[prefix+'freq'].set(self.freq_conversion*self.values.freq[prefix],
+                                          vary=~self.values.fixfreq[prefix])
+                params[prefix+'amp'].set(self.values.amp[prefix], 
+                                         vary=~self.values.fixamp[prefix])
+                #Correct phase for tdiff
+                thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
+                if np.isnan(thisphase): #if new signal to fit
+                    thisphase = self._brute_phase_est(self.values.freq[prefix], self.values.amp[prefix])
+                
+                params[prefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
+                                           vary=~self.values.fixphase[prefix])
+                prefixmap[prefix] = prefix
+            else: #combination
+                useprefix = 'c{}'.format(cnum)
+                signals[useprefix] = Model(sin,prefix=useprefix)
+                params.update(signals[useprefix].make_params())
+                parts = re.split('\+|\-|\*|\/',prefix)
+                keys = set([part for part in parts if part in self.values.index])
+                exploded = re.split('(\+|\-|\*|\/)',prefix)
+                expression = "".join([val+'freq' if val in keys else val for val in exploded])
+                params[useprefix+'freq'].set(expr=expression)
+                params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
+                #Correct phase for tdiff
+                thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
+                if np.isnan(thisphase): #if new signal to fit
+                    thisphase = self._brute_phase_est(self.values.freq[prefix], self.values.amp[prefix])
+                params[useprefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
+                                              vary=~self.values.fixphase[prefix])
+                prefixmap[prefix] = useprefix
+                cnum+=1
                 
         #model is sum of sines
         model = np.sum([signals[prefixmap[prefix]] for prefix in self.values.index[self.values.include]])
         
-        #compute fixed-frequency fit if there are signals without phase information
-        if newsignals:
-            result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), 
-                               params, x=self.lc_orig.time[self.include]+self.tshift, 
-                               method='brute')
-            #Update signals from preliminary fit
-            params = result.params
+        result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), 
+                           params, x=self.lc_orig.time[self.include]+self.tshift)
         
-        #refine, allowing freq to vary (unless fixed by user)
-        for prefix in self.values.index[self.values.include]:
-            params[prefixmap[prefix]+'amp'].set(vary=~self.values.fixamp[prefix])
-            params[prefixmap[prefix]+'phase'].set(min=-np.inf, max=np.inf,
-                                                  vary=~self.values.fixphase[prefix])
-            if isindep(prefix):
-                params[prefixmap[prefix]+'freq'].set(vary=~self.values.fixfreq[prefix])
-                #params[prefixmap[prefix]+'amp'].set(result.params[prefixmap[prefix]+'amp'].value)
-                
-        
-        result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), params, x=self.lc_orig.time[self.include]+self.tshift)
         self.log("Fit refined.")  
         self.log("Fit properties:"+result.fit_report())
         
         self._update_values_from_fit(result.params,prefixmap)
         
         self._mark_highest_peak()#Mark highest peak in residuals
+        
+        self._update_status(False)#Calculation done
         
     def _update_values_from_fit(self,params,prefixmap):
         #update dataframe of params with new values from fit
@@ -892,7 +897,6 @@ class Pyriod(object):
         tempdf = self.signals_qgrid.get_changed_df().copy().astype(dtype=dict(zip(self.columns,self.dtypes)))
         tempdf["amp"] /= self.amp_conversion
         tempdf["amperr"] /= self.amp_conversion
-        self.log(str(tempdf.dtypes), level="debug")
         return tempdf
     
     def _update_values_from_qgrid(self):# *args
@@ -961,13 +965,18 @@ class Pyriod(object):
     def delete_rows(self,indices):
         self.log("Deleted signals {}".format([sig for sig in indices]))
         self.values = self.values.drop(indices)
-        #self.signals_qgrid.df = self.signals_qgrid.df.drop(indices)
         self.signals_qgrid.df = self.signals_qgrid.get_changed_df().drop(indices)
     
     def _delete_selected(self, *args):
         self.delete_rows(self.signals_qgrid.get_selected_df().index)
-        self._update_values_from_qgrid()
-        self._mark_highest_peak()
+        #Also delete associated combination frequencies
+        isindep = lambda key: key[1:].isdigit()
+        for key in self.signals_qgrid.df.index:
+            if not isindep(key) and not self._valid_combo(key):
+                self.delete_rows(key)
+        #Don't update model at this point, as staged signals may crash model
+        #self._update_values_from_qgrid()
+        #self._mark_highest_peak()
 
     def _initialize_dataframe(self):
         df = pd.DataFrame(columns=self.columns).astype(dtype=dict(zip(self.columns,self.dtypes)))
@@ -1089,6 +1098,7 @@ class Pyriod(object):
             self.tshift = tshift
     
     def compute_pers(self, orig=False):
+        self._update_status() #indicate running calculation
         if orig:
             self.per_orig = self.lc_orig[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
                                                                       frequency=self.freqs)*self.amp_conversion
@@ -1098,6 +1108,7 @@ class Pyriod(object):
                                                                     frequency=self.freqs)*self.amp_conversion
         self.interpls = interp1d(self.freqs,self.per_resid.power.value)
         self._log_per_properties()
+        self._update_status(False)#Calculation complete
         
     def _update_per_plots(self):
         self.perplot_orig.set_ydata(self.per_orig.power.value)
@@ -1161,7 +1172,7 @@ class Pyriod(object):
         options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask])],selected_index=None)
         options.set_title(0, 'options')
         savefig = HBox([self._save_tsfig,self._tsfig_file_location])
-        return VBox([self.lcfig.canvas,savefig,options])
+        return VBox([self._status,self.lcfig.canvas,savefig,options])
        
     def Periodogram(self):
         options = widgets.Accordion(children=[VBox([self._snaptopeak,self._show_per_markers,
@@ -1169,11 +1180,12 @@ class Pyriod(object):
                         self._show_per_model])],selected_index=None)
         options.set_title(0, 'options')
         savefig = HBox([self._save_perfig,self._perfig_file_location])
-        periodogram = VBox([HBox([self._thisfreq,self._thisamp]),
-                        HBox([self._addtosol,self._refit]),
-                        self.perfig.canvas,
-                        savefig,
-                        options])
+        periodogram = VBox([self._status,
+                            HBox([self._thisfreq,self._thisamp]),
+                            HBox([self._addtosol,self._refit]),
+                            self.perfig.canvas,
+                            savefig,
+                            options])
         return periodogram
         
         
@@ -1218,9 +1230,10 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
-        return VBox([HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
-                self.signals_qgrid,
-                HBox([self._save,self._load,self._signals_file_location])])
+        return VBox([self._status,
+                     HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
+                     self.signals_qgrid,
+                     HBox([self._save,self._load,self._signals_file_location])])
         
     def Log(self):
         return self._logbox
@@ -1276,7 +1289,13 @@ class Pyriod(object):
         
     def _save_perfig_button_click(self, *args):
         self.save_perfig(self._perfig_file_location.selected)
-        
+    
+    def _update_status(self,calculating=True):
+        if calculating:
+            self._status.value = "<center><b><big><font color='red'>UPDATING CALCULATIONS...</big></b></center>"
+        else:
+            self._status.value = ""
+            
     def close_figures(self):
         """Close all figures beloning to this class.
         
