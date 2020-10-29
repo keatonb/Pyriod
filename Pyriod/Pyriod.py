@@ -273,8 +273,7 @@ class Pyriod(object):
         self.interpls = interp1d(self.freqs,self.per_resid.power.value)
         
         #Compute spectral window
-        #TODO: do with lightkurve
-        #May not work in Python3!!
+        #TODO: do with DFT
         #self.specwin = np.sqrt(LombScargle(self.lc_orig.time*self.freq_conversion, np.ones(self.lc_orig.time.shape),
         #                                   fit_mean=False).power(self.freqs,method = 'fast'))
         #self.perplot_sw, = self.perax.plot(self.freqs,self.specwin,lw=1)
@@ -310,7 +309,8 @@ class Pyriod(object):
         ### SIGNALS ###
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
-        self.values = self._initialize_dataframe()
+        self.fitvalues = self._initialize_dataframe()
+        self.stagedvalues = self.fitvalues.copy()
         
         #The interface for interacting with the values DataFrame:
         self._init_signals_qgrid()
@@ -322,6 +322,9 @@ class Pyriod(object):
         #Write lightkurve and periodogram properties to log
         self._log_lc_properties()
         self._log_per_properties()
+        
+        #Keep track of whether the displayed data reflect the most recent fit
+        self.uptodate = True
         
         #Create some decoy figure so users don't accidentally plot over the Pyriod ones
         _ = plt.figure()
@@ -643,7 +646,7 @@ class Pyriod(object):
         inds = []
         i=0
         while len(inds) < n:
-            if not "f{}".format(i) in self.values.index:
+            if not "f{}".format(i) in self.stagedvalues.index:
                 inds.append("f{}".format(i))
             i+=1
         return inds
@@ -723,30 +726,28 @@ class Pyriod(object):
                 dictvals["amp"][i] = 1.
             else:
                 dictvals["amp"][i] /= self.amp_conversion
-            #if dictvals["phase"][i] is None:
-            #    dictvals["phase"][i] = np.nan#0.5
         #Replace all None indices with next available
         noneindex = np.where([ind is None for ind in index])[0]
         newindices = self._next_signal_index(n=len(noneindex))
         for i in range(len(noneindex)):
             index[noneindex[i]] = newindices[i]
         #Check that all indices are unique and none already used
-        if (len(index) != len(set(index))) or any([ind in self.values.index for ind in index]):
+        if (len(index) != len(set(index))) or any([ind in self.stagedvalues.index for ind in index]):
             raise ValueError("Duplicate indices provided.")
         toappend = pd.DataFrame(dictvals,columns=self.columns,index=index)
         toappend = toappend.astype(dtype=dict(zip(self.columns,self.dtypes)))
-        self.values = self.values.append(toappend,sort=False)
+        self.stagedvalues = self.stagedvalues.append(toappend,sort=False)
         self._update_freq_dropdown() #For folding time series
-        displayframe = self.values.copy()#[self.columns[:-1]]
+        displayframe = self.stagedvalues.copy()
         displayframe["amp"] = displayframe["amp"] * self.amp_conversion
-        self.signals_qgrid.df = displayframe.combine_first(self.signals_qgrid.df)#[self.columns[:-1]] #Update displayed values
-        #self.signals_qgrid.df.columns = self.columns[:-1]
+        self.signals_qgrid.df = displayframe.combine_first(self.signals_qgrid.df) #Update displayed values
         self._update_signal_markers()
         self.log("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
+        self._model_current(False)
     
     def _valid_combo(self,combostr):
         parts = re.split('\+|\-|\*|\/',combostr.replace(" ", "").lower())
-        allvalid = np.all([(part in self.values.index) or part.replace('.','',1).isdigit() for part in parts])
+        allvalid = np.all([(part in self.stagedvalues.index) or part.replace('.','',1).isdigit() for part in parts])
         return allvalid and (len(parts) > 1)
         
     #operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
@@ -760,9 +761,9 @@ class Pyriod(object):
             #evaluate combostring:
             #replace keys with values
             parts = re.split('\+|\-|\*|\/',combostr[i].replace(" ", "").lower())
-            keys = set([part for part in parts if part in self.values.index])
+            keys = set([part for part in parts if part in self.stagedvalues.index])
             exploded = re.split('(\+|\-|\*|\/)',combostr[i].replace(" ", "").lower())
-            expression = "".join([str(self.values.loc[val,'freq']) if val in keys else val for val in exploded])
+            expression = "".join([str(self.stagedvalues.loc[val,'freq']) if val in keys else val for val in exploded])
             freq[i] = eval(expression)
             if amp[i] == None:
                 amp[i] = self.interpls(subfreq(freq[i],self.nyquist)[0])
@@ -790,131 +791,147 @@ class Pyriod(object):
         
         Improve fit once with all freqs and amps fixed, then allow to vary.
         """
-        if np.sum(self.values.include.values) == 0:
-            self.log("No signals to fit.",level='warning')
-            return # nothing to fit
-        
         #Indicate that a calculation is running
         self._update_status()
         
-        #Set up lmfit model for fitting
-        signals = {} #empty dict to be populated
-        params = Parameters()
-        
-        #handle combination frequencies differently
-        isindep = lambda key: key[1:].isdigit()
-        cnum = 0
-        
-        prefixmap = {}
-        
-        #Set up model to fit (for included signals only)
-        #Estimate phase for new signals with _brute_phase_est
-        for prefix in self.values.index[self.values.include]:
-            if isindep(prefix):
-                signals[prefix] = Model(sin,prefix=prefix)
-                params.update(signals[prefix].make_params())
-                params[prefix+'freq'].set(self.freq_conversion*self.values.freq[prefix],
-                                          vary=~self.values.fixfreq[prefix])
-                params[prefix+'amp'].set(self.values.amp[prefix], 
-                                         vary=~self.values.fixamp[prefix])
-                #Correct phase for tdiff
-                thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
-                if np.isnan(thisphase): #if new signal to fit
-                    thisphase = self._brute_phase_est(self.values.freq[prefix], self.values.amp[prefix])
-                
-                params[prefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
-                                           vary=~self.values.fixphase[prefix])
-                prefixmap[prefix] = prefix
-            else: #combination
-                useprefix = 'c{}'.format(cnum)
-                signals[useprefix] = Model(sin,prefix=useprefix)
-                params.update(signals[useprefix].make_params())
-                parts = re.split('\+|\-|\*|\/',prefix)
-                keys = set([part for part in parts if part in self.values.index])
-                exploded = re.split('(\+|\-|\*|\/)',prefix)
-                expression = "".join([val+'freq' if val in keys else val for val in exploded])
-                params[useprefix+'freq'].set(expr=expression)
-                params[useprefix+'amp'].set(self.values.amp[prefix], vary=~self.values.fixamp[prefix])
-                #Correct phase for tdiff
-                thisphase = self.values.phase[prefix] - self.tshift*self.freq_conversion*self.values.freq[prefix]
-                if np.isnan(thisphase): #if new signal to fit
-                    thisphase = self._brute_phase_est(self.values.freq[prefix], self.values.amp[prefix])
-                params[useprefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
-                                              vary=~self.values.fixphase[prefix])
-                prefixmap[prefix] = useprefix
-                cnum+=1
-                
-        #model is sum of sines
-        model = np.sum([signals[prefixmap[prefix]] for prefix in self.values.index[self.values.include]])
-        
-        result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), 
-                           params, x=self.lc_orig.time[self.include]+self.tshift)
-        
-        self.log("Fit refined.")  
-        self.log("Fit properties:"+result.fit_report())
-        
-        self._update_values_from_fit(result.params,prefixmap)
-        
-        self._mark_highest_peak()#Mark highest peak in residuals
-        
-        self._update_status(False)#Calculation done
-        
-    def _update_values_from_fit(self,params,prefixmap):
-        #update dataframe of params with new values from fit
-        #also rectify and negative amplitudes or phases outside [0,1)
-        #isindep = lambda key: key[1:].isdigit()
-        #cnum = 0
-        for prefix in self.values.index[self.values.include]:
-            self.values.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.freq_conversion)
-            self.values.loc[prefix,'freqerr'] = float(params[prefixmap[prefix]+'freq'].stderr/self.freq_conversion)
-            self.values.loc[prefix,'amp'] = params[prefixmap[prefix]+'amp'].value
-            self.values.loc[prefix,'amperr'] = float(params[prefixmap[prefix]+'amp'].stderr)
-            self.values.loc[prefix,'phase'] = params[prefixmap[prefix]+'phase'].value
-            self.values.loc[prefix,'phaseerr'] = float(params[prefixmap[prefix]+'phase'].stderr)
-            #rectify
-            if self.values.loc[prefix,'amp'] < 0:
-                self.values.loc[prefix,'amp'] *= -1.
-                self.values.loc[prefix,'phase'] -= 0.5
-            #Reference phase to t0
-            self.values.loc[prefix,'phase'] += self.tshift*self.values.loc[prefix,'freq']*self.freq_conversion
-            self.values.loc[prefix,'phase'] %= 1.
-        self._update_freq_dropdown()
-        
-        #update qgrid
-        #self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.df)[self.columns[:-1]]
-        self.signals_qgrid.df = self._convert_values_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())#[self.columns[:-1]]
-        #self.signals_qgrid.df = self._convert_values_to_qgrid()[self.columns[:-1]]
-        
-        self._update_values_from_qgrid()
-    
-    def _convert_values_to_qgrid(self):
-        tempdf = self.values.copy()#[self.columns[:-1]]
-        tempdf["amp"] *= self.amp_conversion
-        tempdf["amperr"] *= self.amp_conversion
-        return tempdf
-    
-    def _convert_qgrid_to_values(self):
-        tempdf = self.signals_qgrid.get_changed_df().copy().astype(dtype=dict(zip(self.columns,self.dtypes)))
-        tempdf["amp"] /= self.amp_conversion
-        tempdf["amperr"] /= self.amp_conversion
-        return tempdf
-    
-    def _update_values_from_qgrid(self):# *args
-        self.values = self._convert_qgrid_to_values()
+        if np.sum(self.stagedvalues.include.values) == 0:
+            self.log("No signals to fit.",level='warning')
+            self.fitvalues = self._initialize_dataframe() #Empty
+        else: #Fit a model
+            #Set up lmfit model for fitting
+            signals = {} #empty dict to be populated
+            params = Parameters()
+            
+            #handle combination frequencies differently
+            isindep = lambda key: key[1:].isdigit()
+            cnum = 0
+            
+            prefixmap = {}
+            
+            #Set up model to fit (for included signals only)
+            #Estimate phase for new signals with _brute_phase_est
+            for prefix in self.stagedvalues.index[self.stagedvalues.include]:
+                if isindep(prefix):
+                    signals[prefix] = Model(sin,prefix=prefix)
+                    params.update(signals[prefix].make_params())
+                    params[prefix+'freq'].set(self.freq_conversion*self.stagedvalues.freq[prefix],
+                                              vary=~self.stagedvalues.fixfreq[prefix])
+                    params[prefix+'amp'].set(self.stagedvalues.amp[prefix], 
+                                             vary=~self.stagedvalues.fixamp[prefix])
+                    #Correct phase for tdiff
+                    thisphase = self.stagedvalues.phase[prefix] - self.tshift*self.freq_conversion*self.stagedvalues.freq[prefix]
+                    if np.isnan(thisphase): #if new signal to fit
+                        thisphase = self._brute_phase_est(self.stagedvalues.freq[prefix], self.stagedvalues.amp[prefix])
+                    
+                    params[prefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
+                                               vary=~self.stagedvalues.fixphase[prefix])
+                    prefixmap[prefix] = prefix
+                else: #combination
+                    useprefix = 'c{}'.format(cnum)
+                    signals[useprefix] = Model(sin,prefix=useprefix)
+                    params.update(signals[useprefix].make_params())
+                    parts = re.split('\+|\-|\*|\/',prefix)
+                    keys = set([part for part in parts if part in self.stagedvalues.index])
+                    exploded = re.split('(\+|\-|\*|\/)',prefix)
+                    expression = "".join([val+'freq' if val in keys else val for val in exploded])
+                    params[useprefix+'freq'].set(expr=expression)
+                    params[useprefix+'amp'].set(self.stagedvalues.amp[prefix], vary=~self.stagedvalues.fixamp[prefix])
+                    #Correct phase for tdiff
+                    thisphase = self.stagedvalues.phase[prefix] - self.tshift*self.freq_conversion*self.stagedvalues.freq[prefix]
+                    if np.isnan(thisphase): #if new signal to fit
+                        thisphase = self._brute_phase_est(self.stagedvalues.freq[prefix], self.stagedvalues.amp[prefix])
+                    params[useprefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
+                                                  vary=~self.stagedvalues.fixphase[prefix])
+                    prefixmap[prefix] = useprefix
+                    cnum+=1
+                    
+            #model is sum of sines
+            model = np.sum([signals[prefixmap[prefix]] for prefix in self.stagedvalues.index[self.stagedvalues.include]])
+            
+            result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), 
+                               params, x=self.lc_orig.time[self.include]+self.tshift)
+            
+            self.log("Fit refined.")  
+            self.log("Fit properties:"+result.fit_report())
+            self._update_values_from_fit(result.params,prefixmap)
         
         self._update_lcs()
         self._update_lc_display()
         self._update_signal_markers()
         self.compute_pers()
         self._update_per_plots()
+        self._mark_highest_peak()#Mark highest peak in residuals
+        
+        self._update_status(False)#Calculation done
+        self._model_current(True)#fitvalues and stagedvalues are the same
+        
+    def _update_values_from_fit(self,params,prefixmap):
+        #update dataframe of params with new values from fit
+        #also rectify and negative amplitudes or phases outside [0,1)
+        #isindep = lambda key: key[1:].isdigit()
+        #cnum = 0
+        self.fitvalues = self.stagedvalues.astype(dtype=dict(zip(self.columns,self.dtypes)))
+        for prefix in self.stagedvalues.index[self.stagedvalues.include]:
+            self.fitvalues.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.freq_conversion)
+            self.fitvalues.loc[prefix,'freqerr'] = float(params[prefixmap[prefix]+'freq'].stderr/self.freq_conversion)
+            self.fitvalues.loc[prefix,'amp'] = params[prefixmap[prefix]+'amp'].value
+            self.fitvalues.loc[prefix,'amperr'] = float(params[prefixmap[prefix]+'amp'].stderr)
+            self.fitvalues.loc[prefix,'phase'] = params[prefixmap[prefix]+'phase'].value
+            self.fitvalues.loc[prefix,'phaseerr'] = float(params[prefixmap[prefix]+'phase'].stderr)
+            #rectify
+            if self.fitvalues.loc[prefix,'amp'] < 0:
+                self.fitvalues.loc[prefix,'amp'] *= -1.
+                self.fitvalues.loc[prefix,'phase'] -= 0.5
+            #Reference phase to t0
+            self.fitvalues.loc[prefix,'phase'] += self.tshift*self.fitvalues.loc[prefix,'freq']*self.freq_conversion
+            self.fitvalues.loc[prefix,'phase'] %= 1.
+        
         self._update_freq_dropdown()
+        
+        #update qgrid
+        self.signals_qgrid.df = self._convert_fitvalues_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())
+        
+        self._update_stagedvalues_from_qgrid()
+    
+    def _convert_fitvalues_to_qgrid(self):
+        tempdf = self.fitvalues.copy().astype(dtype=dict(zip(self.columns,self.dtypes)))
+        tempdf["amp"] *= self.amp_conversion
+        tempdf["amperr"] *= self.amp_conversion
+        return tempdf
+    
+    def _convert_qgrid_to_stagedvalues(self):
+        tempdf = self.signals_qgrid.get_changed_df().copy().astype(dtype=dict(zip(self.columns,self.dtypes)))
+        tempdf["amp"] /= self.amp_conversion
+        tempdf["amperr"] /= self.amp_conversion
+        return tempdf
+    
+    def _update_stagedvalues_from_qgrid(self):# *args
+        self.stagedvalues = self._convert_qgrid_to_stagedvalues()
+        
+        #self._update_lcs()
+        #self._update_lc_display()
+        self._update_signal_markers()
+        #self.compute_pers()
+        #self._update_per_plots()
+        #self._update_freq_dropdown()
+        
+    def _model_current(self,current = True):
+        """update self.uptodate to whether displayed date reflect model fit
+        
+        and color refine fit button accordingly
+        """
+        if current:
+            self._refit.button_style = ''
+        else:
+            self._refit.button_style = 'warning'
+        self.uptodate = current
         
     def sample_model(self,time):
         flux = np.zeros(len(time))
-        for prefix in self.values.index[self.values.include]:
-            freq = float(self.values.loc[prefix,'freq'])
-            amp = float(self.values.loc[prefix,'amp'])
-            phase = float(self.values.loc[prefix,'phase'])
+        for prefix in self.fitvalues.index[self.fitvalues.include]:
+            freq = float(self.fitvalues.loc[prefix,'freq'])
+            amp = float(self.fitvalues.loc[prefix,'amp'])
+            phase = float(self.fitvalues.loc[prefix,'phase'])
             flux += sin(time,freq*self.freq_conversion,amp,phase)
         return flux
     
@@ -928,14 +945,15 @@ class Pyriod(object):
     
     def _qgrid_changed_manually(self, *args):
         #note: args has information about what changed if needed
+        self.log('QGRID CHANGED MANUALLY',level='debug')
         newdf = self.signals_qgrid.get_changed_df()
-        #olddf = self.signals_qgrid.df
-        olddf = self._convert_values_to_qgrid()
+        olddf = self.signals_qgrid.df
         logmessage = "Signals table changed manually.\n"
         changedcols = []
         for key in newdf.index.values:
             if key in olddf.index.values:
-                changes = newdf.loc[key][olddf.loc[key] != newdf.loc[key]]
+                changes = newdf.loc[key][(olddf.loc[key] != newdf.loc[key])]
+                changes = changes.dropna() #remove nans
                 if len(changes) > 0:
                     logmessage += "Values changed for {}:\n".format(key)
                 for change in changes.index:
@@ -950,10 +968,7 @@ class Pyriod(object):
         #self.signals_qgrid.df.columns = self.columns[:-1]
         
         #Update plots only if signal values (not what is fixed) changed
-        if all([colname[:3] == 'fix' for colname in changedcols]):
-            self.values = self._convert_qgrid_to_values()
-        else:
-            self._update_values_from_qgrid()
+        self._update_stagedvalues_from_qgrid()
     
     columns = ['include','freq','fixfreq','freqerr',
                'amp','fixamp','amperr',
@@ -964,7 +979,7 @@ class Pyriod(object):
     
     def delete_rows(self,indices):
         self.log("Deleted signals {}".format([sig for sig in indices]))
-        self.values = self.values.drop(indices)
+        self.stagedvalues = self.stagedvalues.drop(indices)
         self.signals_qgrid.df = self.signals_qgrid.get_changed_df().drop(indices)
     
     def _delete_selected(self, *args):
@@ -989,21 +1004,21 @@ class Pyriod(object):
             self._fold_on.value = value['new']
         
     def _update_freq_dropdown(self):
-        labels = [self.values.index[i] + ': {:.8f} '.format(self.values.freq[i]) + self.per_orig.frequency.unit.to_string() for i in range(len(self.values))]
+        labels = [self.fitvalues.index[i] + ': {:.8f} '.format(self.fitvalues.freq[i]) + self.per_orig.frequency.unit.to_string() for i in range(len(self.fitvalues))]
         currentind = self._select_fold_freq.index
         if currentind == None:
             currentind = 0
         if len(labels) == 0:
             self._select_fold_freq.options = [None]
         else:
-            self._select_fold_freq.options = zip(labels, self.values.freq.values)
+            self._select_fold_freq.options = zip(labels, self.fitvalues.freq.values)
             self._select_fold_freq.index = currentind
         
         
     ########## Set up *SIGNALS* widget using qgrid ##############
     
     def _get_qgrid(self):
-        display_df = self.values.copy()
+        display_df = self.stagedvalues.copy()
         display_df["amp"] *= self.amp_conversion
         display_df["amperr"] *= self.amp_conversion
         return qgrid.show_grid(display_df, show_toolbar=False, precision = 9,
@@ -1025,9 +1040,9 @@ class Pyriod(object):
         self._display_lc(residuals = (self._tstype.value == "Residuals"))
         
     def _update_signal_markers(self):
-        subnyquistfreqs = subfreq(self.values['freq'][self.values.include].astype('float'),self.nyquist)
-        amps = self.values['amp'].values[self.values.include]*self.amp_conversion
-        indep = np.array([key[1:].isdigit() for key in self.values.index[self.values.include]])
+        subnyquistfreqs = subfreq(self.stagedvalues['freq'][self.stagedvalues.include].astype('float'),self.nyquist)
+        amps = self.stagedvalues['amp'].values[self.stagedvalues.include]*self.amp_conversion
+        indep = np.array([key[1:].isdigit() for key in self.stagedvalues.index[self.stagedvalues.include]])
         
         self.signal_markers.set_data(subnyquistfreqs[np.where(indep)],amps[np.where(indep)])
         if len(indep) > 0:
@@ -1244,7 +1259,7 @@ class Pyriod(object):
     def save_solution(self,filename='Pyriod_solution.csv'):
         self.log("Writing signal solution to "+os.path.abspath(filename))
         #self.signals_qgrid.df.to_csv(filename,index_label='label')
-        self._convert_values_to_qgrid().to_csv(filename,index_label='label')
+        self._convert_fitvalues_to_qgrid().to_csv(filename,index_label='label')
         
     def _save_button_click(self, *args):
         self.save_solution(filename=self._signals_file_location.selected)
@@ -1257,7 +1272,7 @@ class Pyriod(object):
             logmessage += loaddf.to_string().replace('\n','<br />')
             self.log(logmessage)
             self.signals_qgrid.df = loaddf
-            self._update_values_from_qgrid()
+            self._update_stagedvalues_from_qgrid()
         else:
             self.log("Failed to load "+os.path.abspath(filename)+". File not found.<br />",level='error')
         
