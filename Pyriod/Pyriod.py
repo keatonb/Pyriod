@@ -157,7 +157,7 @@ class Pyriod(object):
     time : array-like
         Time values
     flux : array-like
-        Flux values (normalized, mean subtracted)
+        Flux values (normalized)
     
 	Future Development
 	----------
@@ -309,8 +309,9 @@ class Pyriod(object):
         ### SIGNALS ###
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
-        self.fitvalues = self._initialize_dataframe()
-        self.stagedvalues = self.fitvalues.copy()
+        self.stagedvalues = self._initialize_dataframe()
+        self.fitvalues = self.stagedvalues.copy().drop('brute',1)
+        
         
         #The interface for interacting with the values DataFrame:
         self._init_signals_qgrid()
@@ -507,15 +508,16 @@ class Pyriod(object):
                }
         
         self._column_definitions = {"include":  {'width': 60, 'toolTip': "include signal in model fit?"},
-                                    "freq":      {'width': 112, 'toolTip': "mode frequency"},
+                                    "freq":      {'width': 100, 'toolTip': "mode frequency"},
                                     "fixfreq":  {'width': 60, 'toolTip': "fix frequency during fit?"},
-                                    "freqerr":  {'width': 100, 'toolTip': "uncertainty on frequency", 'editable': False},
-                                    "amp":       {'width': 112, 'toolTip': "mode amplitude"},
+                                    "freqerr":  {'width': 90, 'toolTip': "uncertainty on frequency", 'editable': False},
+                                    "amp":       {'width': 100, 'toolTip': "mode amplitude"},
                                     "fixamp":   {'width': 60, 'toolTip': "fix amplitude during fit?"},
-                                    "amperr":  {'width': 100, 'toolTip': "uncertainty on amplitude", 'editable': False},
-                                    "phase":     {'width': 112, 'toolTip': "mode phase"},
+                                    "amperr":  {'width': 90, 'toolTip': "uncertainty on amplitude", 'editable': False},
+                                    "phase":     {'width': 100, 'toolTip': "mode phase"},
+                                    "brute": {'width': 65, 'toolTip': "brute sample phase first during fit?"},
                                     "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
-                                    "phaseerr":  {'width': 100, 'toolTip': "uncertainty on phase", 'editable': False}}
+                                    "phaseerr":  {'width': 90, 'toolTip': "uncertainty on phase", 'editable': False}}
     
     def _init_signals_widgets(self):
         ### Time Series widget stuff  ###
@@ -716,10 +718,10 @@ class Pyriod(object):
         return tuple(variables)
     
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False, 
-                   fixamp=False, fixphase=False, include=True, index=None):
-        freq,amp,phase,fixfreq,fixamp,fixphase,include,index = self._make_all_iter([freq,amp,phase,fixfreq,fixamp,fixphase,include,index])
-        colnames = ["freq","fixfreq","amp","fixamp","phase","fixphase","include"]
-        newvalues = [nv for nv in [freq,fixfreq,amp,fixamp,phase,fixphase,include]]
+                   fixamp=False, fixphase=False, include=True, brute=False, index=None):
+        freq,amp,phase,fixfreq,fixamp,fixphase,include,brute,index = self._make_all_iter([freq,amp,phase,fixfreq,fixamp,fixphase,include,brute,index])
+        colnames = ["freq","fixfreq","amp","fixamp","phase","brute","fixphase","include"]
+        newvalues = [nv for nv in [freq,fixfreq,amp,fixamp,phase,brute,fixphase,include]]
         dictvals = dict(zip(colnames,newvalues))
         for i in range(len(freq)):
             if dictvals["amp"][i] is None:
@@ -796,7 +798,7 @@ class Pyriod(object):
         
         if np.sum(self.stagedvalues.include.values) == 0:
             self.log("No signals to fit.",level='warning')
-            self.fitvalues = self._initialize_dataframe() #Empty
+            self.fitvalues = self._initialize_dataframe().drop('brute',1) #Empty
         else: #Fit a model
             #Set up lmfit model for fitting
             signals = {} #empty dict to be populated
@@ -820,7 +822,7 @@ class Pyriod(object):
                                              vary=~self.stagedvalues.fixamp[prefix])
                     #Correct phase for tdiff
                     thisphase = self.stagedvalues.phase[prefix] - self.tshift*self.freq_conversion*self.stagedvalues.freq[prefix]
-                    if np.isnan(thisphase): #if new signal to fit
+                    if np.isnan(thisphase) or self.stagedvalues.brute[prefix]: #if new signal to fit
                         thisphase = self._brute_phase_est(self.stagedvalues.freq[prefix], self.stagedvalues.amp[prefix])
                     
                     params[prefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
@@ -870,7 +872,7 @@ class Pyriod(object):
         #also rectify and negative amplitudes or phases outside [0,1)
         #isindep = lambda key: key[1:].isdigit()
         #cnum = 0
-        self.fitvalues = self.stagedvalues.astype(dtype=dict(zip(self.columns,self.dtypes)))
+        self.fitvalues = self.stagedvalues.astype(dtype=dict(zip(self.columns,self.dtypes))).drop('brute',1)
         for prefix in self.stagedvalues.index[self.stagedvalues.include]:
             self.fitvalues.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.freq_conversion)
             self.fitvalues.loc[prefix,'freqerr'] = float(params[prefixmap[prefix]+'freq'].stderr/self.freq_conversion)
@@ -890,11 +892,12 @@ class Pyriod(object):
         
         #update qgrid
         self.signals_qgrid.df = self._convert_fitvalues_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())
-        
         self._update_stagedvalues_from_qgrid()
     
     def _convert_fitvalues_to_qgrid(self):
-        tempdf = self.fitvalues.copy().astype(dtype=dict(zip(self.columns,self.dtypes)))
+        tempdf = self.fitvalues.copy()
+        tempdf["brute"] = False
+        tempdf = tempdf.astype(dtype=dict(zip(self.columns,self.dtypes)))[self.columns]
         tempdf["amp"] *= self.amp_conversion
         tempdf["amperr"] *= self.amp_conversion
         return tempdf
@@ -945,7 +948,6 @@ class Pyriod(object):
     
     def _qgrid_changed_manually(self, *args):
         #note: args has information about what changed if needed
-        self.log('QGRID CHANGED MANUALLY',level='debug')
         newdf = self.signals_qgrid.get_changed_df()
         olddf = self.signals_qgrid.df
         logmessage = "Signals table changed manually.\n"
@@ -972,10 +974,10 @@ class Pyriod(object):
     
     columns = ['include','freq','fixfreq','freqerr',
                'amp','fixamp','amperr',
-               'phase','fixphase','phaseerr']
+               'phase','brute','fixphase','phaseerr']
     dtypes = ['bool','float','bool','float',
               'float','bool','float',
-              'float','bool','float']
+              'float','bool','bool','float']
     
     def delete_rows(self,indices):
         self.log("Deleted signals {}".format([sig for sig in indices]))
