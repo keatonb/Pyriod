@@ -188,7 +188,7 @@ class Pyriod(object):
         self.lcfig,self.lcax = plt.subplots(figsize=(7,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_position([0.13,0.22,0.85,0.76])
         self._lc_colors = {0:"bisque",1:"C0"}
-        self.lcplot_data = self.lcax.scatter(self.lc.time.value/self.time_to_days,self.lc.flux,marker='o',
+        self.lcplot_data = self.lcax.scatter(self.lc.time.value/self.time_to_days,self.lc.flux.value,marker='o',
                                              s=5, ec='None', lw=1, c=self._lc_colors[1])
         #Define selector for masking points
         self.selector = lasso_selector(self.lcax, self.lcplot_data)
@@ -212,14 +212,14 @@ class Pyriod(object):
         self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
         
         #And store version sampled as the data as lc column
-        initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include])
+        initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include].value)
         self.lc["model"] = initmodel
         
         self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value/self.time_to_days,
                                             self.lc_model_sampled.flux,c='r',lw=1)
         
         #And keep track of residuals time series
-        self.lc["resid"] = self.lc["flux"] - self.lc["model"]
+        self.lc["resid"] = self.lc["flux"].value - self.lc["model"].value
         
         
         ### PERIODOGRAM ###
@@ -653,8 +653,8 @@ class Pyriod(object):
         
     def _log_lc_properties(self):
         #If lc has metadata, put it in the log
-        for key, value in self.lc.meta:
-            self.log(f"{key}: {value}")
+        for key in self.lc.meta.keys():
+            self.log(f"{key}: {self.lc.meta[key]}")
         
     def _log_per_properties(self):
         try:
@@ -876,7 +876,7 @@ class Pyriod(object):
             #model is sum of sines
             model = np.sum([signals[prefixmap[prefix]] for prefix in self.stagedvalues.index[self.stagedvalues.include]])
             
-            self.fit_result = model.fit(self.lc.flux[self.include]-np.mean(self.lc.flux[self.include]), 
+            self.fit_result = model.fit(self.lc.flux.value[self.include]-np.mean(self.lc.flux.value[self.include]), 
                                         params, x=self.lc.time.value[self.include]/self.time_to_days+self.tshift)
             
             self.log("Fit refined.")  
@@ -970,7 +970,7 @@ class Pyriod(object):
         self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time.value/self.time_to_days)
         #Observed is at all original times (apply mask before calculations)
         self.lc["model"] = meanflux + self.sample_model(self.lc.time.value/self.time_to_days)
-        self.lc["resid"] = self.lc.flux - self.lc["model"]
+        self.lc["resid"] = self.lc.flux.value - self.lc["model"]
     
     def _qgrid_changed_manually(self, *args):
         #note: args has information about what changed if needed
@@ -1088,17 +1088,17 @@ class Pyriod(object):
             self.lcplot_model.set_ydata(self.lc_model_sampled.flux)
         #lc.time.value = lc.time.value/self.time_to_days
         #rescale y to better match data
-        ymin = np.min(lc.flux[self.include])
-        ymax = np.max(lc.flux[self.include])
+        ymin = np.min(lc.flux[self.include].value)
+        ymax = np.max(lc.flux[self.include].value)
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         #fold if requested
         if self._fold.value:
             xdata=lc.time.value*self._fold_on.value*self.freq_conversion % 1.
-            self.lcplot_data.set_offsets(np.dstack((xdata,lc.flux))[0])
+            self.lcplot_data.set_offsets(np.dstack((xdata,lc.flux.value))[0])
             #self.lcplot_model.set_alpha(0)
             self.lcax.set_xlim(-0.01,1.01)
         else:
-            self.lcplot_data.set_offsets(np.dstack((lc.time.value,lc.flux))[0])
+            self.lcplot_data.set_offsets(np.dstack((lc.time.value,lc.flux.value))[0])
             #self.lcplot_model.set_alpha(1)
             tspan = np.ptp(lc.time.value)
             self.lcax.set_xlim(np.min(lc.time.value)-0.01*tspan,np.max(lc.time.value)+0.01*tspan)
