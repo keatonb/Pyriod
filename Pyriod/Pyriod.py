@@ -10,7 +10,7 @@ For more, see https://github.com/keatonb/Pyriod
 
 ---------------------
 
-The following code was stolen from stackoverflow:
+The following code was copied from stackoverflow:
 
 Distinguish clicks with drag motions from ImportanceOfBeingErnest
 https://stackoverflow.com/a/48452190
@@ -20,33 +20,30 @@ https://stackoverflow.com/a/16571630
 
 ---------------------
 
+Major overhaul to make compatible with and to utilize new functionality of
+LightKurve 2.0. Namely, lc objects are now extenctions of AstroPy TimeSeries 
+objects, with user definable columns. Here are the main changes:
+    - require lightkurve.LightCurve object for initialization
+    - store residuals and the sampled model as columns of the lc parameter
+
 Below here are just some author's notes to keep track of style decisions.
 
-Currently overhauling the periodogram display.
-Should be optional to toggle display of each type of periodogram
-and their display colors
-and which one the mouse is selecting on.
-
-Names of periodograms:
+Names of periodogram plot objects:
     per_orig
     per_resid
     per_model
     per_sw
     per_markers
 
-Names of associates timeseries:
-    lc_orig
-    lc_resid
+Names of timeseries:
+    lc has columns "time","flux","mask","model","resid"
     lc_model_sampled (evenly oversampled through gaps)
-    lc_model_observed (original time samples)
-TODO: rename all lc to ts
 
 Names of plots are:
     lcplot_data,lcplot_model (different nicknames)
     perplot_orig (same nicknames)
     _perplot_orig_display toggle
-    TODO: _perplot_orig_color picker widget
-
+    
 TODO: Show smoothed light curve (and when folded)
 
 """
@@ -70,13 +67,10 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
-from astropy.timeseries import LombScargle
+from astropy.timeseries import TimeSeries
 import lightkurve as lk
 from lmfit import Model, Parameters
-#from lmfit.models import ConstantModel
-#from IPython.display import display
 from bs4 import BeautifulSoup
-#import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.widgets import LassoSelector
 from matplotlib.path import Path
@@ -146,19 +140,14 @@ class Pyriod(object):
     
     Attributes
     ----------
-    time : array-like
-        Time values
-    flux : array-like
-        Flux values (normalized)
+    lc : lightkurve.LightCurve
+        Time Series to analyze, with flux and time columns
     
-	Future Development
-	----------
-	Include flux uncertainties, units, etc.
+	
     """
     id_generator = itertools.count(0)
-    def __init__(self, lc=None, time=None, flux=None, oversample_factor=5, 
-                 nyquist_factor=1, amp_unit='ppt', freq_unit='muHz', 
-                 time_unit = 'day'):
+    def __init__(self, lc, amp_unit='ppt', freq_unit='muHz', 
+                 time_unit = 'day', **kwargs):
         #Generate unique Pyriod instance ID
         self.id = next(self.id_generator)
         
@@ -175,37 +164,31 @@ class Pyriod(object):
         self.fit_result = None #will be replaced as we do fits
        
         ### TIME SERIES ###
-        # Four to keep track of (called lc_nickname)
-        # Original (orig), Residuals (resid), 
-        # Model (oversampled: model_sampled; and observed: model_observed)
-        # Each is lightkurve object
+        # Stored as lightkurve.LightCurve object
+        # "flux" column is original data
+        # "resid" is residuals
+        # "model_sampled" is the model sampled as the data
+        # "masked" marks points that are not to be included in the analysis
+        # A separate LightCurve object holds a model that is better sampled
         
-        #Store light curve as LightKurve object
-        if lc is None and time is None and flux is None:
-            raise ValueError('lc or time and flux are required')
-        if lc is not None:
-            if lk.lightcurve.LightCurve not in type(lc).__mro__:
-                raise ValueError('lc must be lightkurve object')
-            else:
-                self.lc_orig = lc.copy()
-        else:
-            self.lc_orig = lk.LightCurve(time=time.copy(), flux=flux.copy())
-        #Convert time to days
-        self.lc_orig.time *= self.time_to_days
+        #Input must be Lightkurve LightCurve type
+        if not issubclass(type(lc),lk.LightCurve):
+            raise TypeError('lc must be a lightkurve.LightCurve object.')
+        self.lc = lc.copy() #copy so we don't modify original
         
         #Maintain a mask of points to exclude from analysis
-        self.mask = np.ones(len(self.lc_orig)) # 1 = include
-        self.include = np.where(self.mask)
+        self.lc["mask"] = np.ones(len(self.lc)) # 1 = include
+        self.include = np.where(self.lc["mask"])
         
         #Establish frequency sampling
-        self.set_frequency_sampling(oversample_factor=oversample_factor,nyquist_factor=nyquist_factor)
+        self.set_frequency_sampling(**kwargs)
         
         #Initialize time series widgets and plots
         self._init_timeseries_widgets()
         self.lcfig,self.lcax = plt.subplots(figsize=(7,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_position([0.13,0.22,0.85,0.76])
         self._lc_colors = {0:"bisque",1:"C0"}
-        self.lcplot_data = self.lcax.scatter(self.lc_orig.time/self.time_to_days,self.lc_orig.flux,marker='o',
+        self.lcplot_data = self.lcax.scatter(self.lc.time.value/self.time_to_days,self.lc.flux,marker='o',
                                              s=5, ec='None', lw=1, c=self._lc_colors[1])
         #Define selector for masking points
         self.selector = lasso_selector(self.lcax, self.lcplot_data)
@@ -217,26 +200,32 @@ class Pyriod(object):
         #I think this function nearly computes all the periodograms and timeshift and everything...
         #self._mask_changed()
         
-        
         #Also plot the model over the time series
-        dt = np.median(np.diff(self.lc_orig.time/self.time_to_days))
-        time_samples = np.arange(np.min(self.lc_orig.time/self.time_to_days),
-                                 np.max(self.lc_orig.time/self.time_to_days)+dt/oversample_factor,dt/oversample_factor)
-        initmodel = np.zeros(len(time_samples))+np.mean(self.lc_orig.flux)
-        self.lc_model_sampled = lk.LightCurve(time=time_samples*self.time_to_days,flux=initmodel)
-        initmodel = np.zeros(len(self.lc_orig.time))+np.mean(self.lc_orig.flux[self.include])
-        self.lc_model_observed = lk.LightCurve(time=self.lc_orig.time,flux=initmodel)
+        dt = np.median(np.diff(self.lc.time.value/self.time_to_days))
+        tspan = (np.max(self.lc.time.value) - np.min(self.lc.time.value))/self.time_to_days
+        osample = 5
+        nsamples = round(osample*tspan/dt)
+        time_samples = TimeSeries(time_start=np.min(lc.time),
+                                  time_delta= dt * u.day / osample,
+                                  n_samples=nsamples).time
+        initmodel = np.zeros(nsamples)+np.mean(self.lc.flux.value)
+        self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
         
-        self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time/self.time_to_days,
+        #And store version sampled as the data as lc column
+        initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include])
+        self.lc["model"] = initmodel
+        
+        self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value/self.time_to_days,
                                             self.lc_model_sampled.flux,c='r',lw=1)
         
         #And keep track of residuals time series
-        self.lc_resid = self.lc_orig - self.lc_model_observed
+        self.lc["resid"] = self.lc["flux"] - self.lc["model"]
         
         
         ### PERIODOGRAM ###
         # Four types for display
-        # Original (orig), Residuals (resid), Model (model), and Spectral Window (sw)
+        # Original (orig), Residuals (resid), Model (model), 
+        # and Spectral Window (sw; TODO)
         # Each is stored as, e.g., "per_orig", samples at self.freqs
         # Has associated plot _perplot_orig
         # Display toggle widget _perplot_orig_display
@@ -265,7 +254,7 @@ class Pyriod(object):
         
         #Compute spectral window
         #TODO: do with DFT
-        #self.specwin = np.sqrt(LombScargle(self.lc_orig.time*self.freq_conversion, np.ones(self.lc_orig.time.shape),
+        #self.specwin = np.sqrt(LombScargle(self.lc.time*self.freq_conversion, np.ones(self.lc.time.shape),
         #                                   fit_mean=False).power(self.freqs,method = 'fast'))
         #self.perplot_sw, = self.perax.plot(self.freqs,self.specwin,lw=1)
         
@@ -324,7 +313,7 @@ class Pyriod(object):
         #Create some decoy figure so users don't accidentally plot over the Pyriod ones
         _ = plt.figure()
     
-    ###### Run initialization functions #######
+    ###### initialization functions #######
     
     def _set_units(self,amp_unit=None,freq_unit=None,time_unit=None):
         """Configure units to user's preferences.
@@ -663,13 +652,9 @@ class Pyriod(object):
         self._update_log()
         
     def _log_lc_properties(self):
-        try:
-            with Capturing() as output:
-                self.lc_orig.show_properties()
-            info = re.sub(' +', ' ', str("".join([e+' |\n' for e in output[2:]])))
-            self.log("Time Series properties:"+info)
-        except Exception:
-            pass
+        #If lc has metadata, put it in the log
+        for key, value in self.lc.meta:
+            self.log(f"{key}: {value}")
         
     def _log_per_properties(self):
         try:
@@ -703,20 +688,20 @@ class Pyriod(object):
         nyquist_factor : FLOAT, optional
             How many time beyond the approximate Nyquist frequency to sample periodograms. The default is 1. Overridden by maxfreq, if provided.
         minfreq : FLOAT
-            Minimum frequency of range to use. The defualt is 1/duration.
+            Minimum frequency of range to use. The default is 1/duration.
         maxfreq : FLOAT
-            Maximum frequency of range to use. The defualt is based off of nyquist_factor.
+            Maximum frequency of range to use. The default is based off of nyquist_factor.
 
         Returns
         -------
         None.
         """
         #Frequency resolution
-        self.fres = self.time_to_days/(self.freq_conversion*np.ptp(self.lc_orig.time))
+        self.fres = self.time_to_days/(self.freq_conversion*np.ptp(self.lc.time.value))
         self.oversample_factor = oversample_factor
         self.nyquist_factor = nyquist_factor
         #Compute Nyquist frequency (approximate for unevenly sampled data)
-        dt = np.median(np.diff(self.lc_orig.time/self.time_to_days))
+        dt = np.median(np.diff(self.lc.time.value/self.time_to_days))
         self.nyquist = 1/(2.*dt*self.freq_conversion)
         #Sample the following frequencies:
         if frequency is not None:
@@ -823,8 +808,8 @@ class Pyriod(object):
         params['freq'].set(self.freq_conversion*freq, vary=False)
         params['amp'].set(amp, vary=False) 
         params['phase'].set(0.5, vary=True, min=0, max=1, brute_step=brute_step)
-        result = model.fit(self.lc_resid.flux[self.include]-np.mean(self.lc_resid.flux[self.include]), 
-                               params, x=(self.lc_orig.time[self.include]+self.tshift)/self.time_to_days, 
+        result = model.fit(self.lc["resid"][self.include]-np.mean(self.lc["resid"][self.include]), 
+                               params, x=(self.lc.time.value[self.include]+self.tshift)/self.time_to_days, 
                                method='brute')
         return result.params['phase'].value
         
@@ -891,8 +876,8 @@ class Pyriod(object):
             #model is sum of sines
             model = np.sum([signals[prefixmap[prefix]] for prefix in self.stagedvalues.index[self.stagedvalues.include]])
             
-            self.fit_result = model.fit(self.lc_orig.flux[self.include]-np.mean(self.lc_orig.flux[self.include]), 
-                                        params, x=self.lc_orig.time[self.include]/self.time_to_days+self.tshift)
+            self.fit_result = model.fit(self.lc.flux[self.include]-np.mean(self.lc.flux[self.include]), 
+                                        params, x=self.lc.time.value[self.include]/self.time_to_days+self.tshift)
             
             self.log("Fit refined.")  
             self.log("Fit properties:"+self.fit_result.fit_report())
@@ -981,11 +966,11 @@ class Pyriod(object):
     
     def _update_lcs(self):
         #Update time series models
-        meanflux = np.mean(self.lc_orig.flux[self.include])
-        self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time/self.time_to_days)
+        meanflux = np.mean(self.lc.flux.value[self.include])
+        self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time.value/self.time_to_days)
         #Observed is at all original times (apply mask before calculations)
-        self.lc_model_observed.flux = meanflux + self.sample_model(self.lc_orig.time/self.time_to_days)
-        self.lc_resid = self.lc_orig - self.lc_model_observed
+        self.lc["model"] = meanflux + self.sample_model(self.lc.time.value/self.time_to_days)
+        self.lc["resid"] = self.lc.flux - self.lc["model"]
     
     def _qgrid_changed_manually(self, *args):
         #note: args has information about what changed if needed
@@ -1095,32 +1080,33 @@ class Pyriod(object):
         self.perfig.canvas.draw()
         
     def _display_lc(self,residuals=False):
-        lc = self.lc_orig.copy()
+        lc = self.lc.copy()
         if residuals:
-            lc = self.lc_resid.copy()
+            lc = self.lc.select_flux("resid").copy()
             self.lcplot_model.set_ydata(np.zeros(len(self.lc_model_sampled.flux)))
         else:
             self.lcplot_model.set_ydata(self.lc_model_sampled.flux)
-        lc.time /= self.time_to_days
+        #lc.time.value = lc.time.value/self.time_to_days
         #rescale y to better match data
         ymin = np.min(lc.flux[self.include])
         ymax = np.max(lc.flux[self.include])
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         #fold if requested
         if self._fold.value:
-            xdata=lc.time*self._fold_on.value*self.freq_conversion % 1.
+            xdata=lc.time.value*self._fold_on.value*self.freq_conversion % 1.
             self.lcplot_data.set_offsets(np.dstack((xdata,lc.flux))[0])
-            self.lcplot_model.set_alpha(0)
+            #self.lcplot_model.set_alpha(0)
             self.lcax.set_xlim(-0.01,1.01)
         else:
-            self.lcplot_data.set_offsets(np.dstack((lc.time,lc.flux))[0])
-            self.lcplot_model.set_alpha(1)
-            tspan = np.ptp(lc.time)
-            self.lcax.set_xlim(np.min(lc.time)-0.01*tspan,np.max(lc.time)+0.01*tspan)
+            self.lcplot_data.set_offsets(np.dstack((lc.time.value,lc.flux))[0])
+            #self.lcplot_model.set_alpha(1)
+            tspan = np.ptp(lc.time.value)
+            self.lcax.set_xlim(np.min(lc.time.value)-0.01*tspan,np.max(lc.time.value)+0.01*tspan)
         self.selector.update(self.lcplot_data)
         self.lcfig.canvas.draw()
     
     def _mask_selected_pts(self,event):
+        self.log(event.key,"debug")
         if event.key in ["backspace","delete"] and (len(self.selector.ind) > 0):
             #ranges =[]
             #for k,g in groupby(enumerate(np.sort(self.selector.ind)),lambda x:x[0]-x[1]):
@@ -1129,18 +1115,18 @@ class Pyriod(object):
             #    ranges.append((group[0],group[-1]))
             #self.log("Masking {} points in index ranges: {}".format(len(self.selector.ind),ranges))
             self.log("Masking {} selected points.")
-            self.mask[self.selector.ind] = 0
+            self.lc["mask"][self.selector.ind] = 0
             self._mask_changed()
             
     def _clear_mask(self,b):
         self.log("Restoring all masked points.")
-        self.mask[:] = 1
+        self.lc["mask"][:] = 1
         self._mask_changed()
             
     def _mask_changed(self):
-        self.include = np.where(self.mask)
+        self.include = np.where(self.lc["mask"])
         self.selector.ind = []
-        self.lcplot_data.set_facecolors([self._lc_colors[m] for m in self.mask])
+        self.lcplot_data.set_facecolors([self._lc_colors[m] for m in self.lc["mask"]])
         self.lcplot_data.set_edgecolors("None")
         self._update_lcs()
         self._update_lc_display()
@@ -1152,19 +1138,21 @@ class Pyriod(object):
     
     def _calc_tshift(self,tshift=None):
         if tshift is None:
-            self.tshift = -np.mean(self.lc_orig[self.include].time/self.time_to_days)
+            self.tshift = -np.mean(self.lc[self.include].time.value)
         else:
             self.tshift = tshift
     
     def compute_pers(self, orig=False):
         self._update_status() #indicate running calculation
         if orig:
-            self.per_orig = self.lc_orig[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
-                                                                      frequency=self.freqs)*self.amp_conversion
-        self.per_model = self.lc_model_observed[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
-                                                                             frequency=self.freqs)*self.amp_conversion
-        self.per_resid = self.lc_resid[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
-                                                                    frequency=self.freqs)*self.amp_conversion
+            self.per_orig = self.lc[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
+                                                                 frequency=self.freqs)*self.amp_conversion
+        self.per_model = self.lc.select_flux("model")[self.include].to_periodogram(normalization='amplitude',
+                                                                                   freq_unit=self.freq_unit,
+                                                                                   frequency=self.freqs)*self.amp_conversion
+        self.per_resid = self.lc.select_flux("resid")[self.include].to_periodogram(normalization='amplitude',
+                                                                                   freq_unit=self.freq_unit,
+                                                                                   frequency=self.freqs)*self.amp_conversion
         self.interpls = interp1d(self.freqs,self.per_resid.power.value)
         self._log_per_properties()
         self._update_status(False)#Calculation complete
