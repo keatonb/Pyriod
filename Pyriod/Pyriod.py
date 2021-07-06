@@ -689,9 +689,15 @@ class Pyriod(object):
         self.fres = 1./(self.freq_conversion*np.ptp(self.lc.time.value))
         self.oversample_factor = oversample_factor
         self.nyquist_factor = nyquist_factor
-        #Compute Nyquist frequency (approximate for unevenly sampled data)
+        #Approvimate Nyquist frequency (exact only for evenly sampled data)
         dt = np.median(np.diff(self.lc.time.value))
         self.nyquist = 1/(2.*dt*self.freq_conversion)
+        #Evaluate the quality of Nyquist estimate
+        #(between 0-1, 1 being strongest alias)
+        nyqphase = (self.lc.time.value % (0.5/self.nyquist))/(0.5/self.nyquist)
+        y = np.sin(2*np.pi*nyqphase)
+        x = np.cos(2*np.pi*nyqphase)
+        self.nyquist_quality = np.sqrt(np.mean(x)**2.+np.mean(y)**2.)
         #Sample the following frequencies:
         if frequency is not None:
             self.log('Using user supplied frequency sampling: ' + 
