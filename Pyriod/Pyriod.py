@@ -81,6 +81,7 @@ from ipyfilechooser import FileChooser
 
 #Local imports
 from .pyquist import subfreq
+from . import freqsettings
 
 plt.ioff()#Turn off interactive mode
 
@@ -156,7 +157,7 @@ class Pyriod(object):
         self._init_log()
         
         #Work out the units, in a function
-        self._set_units(amp_unit=amp_unit,freq_unit=freq_unit,time_unit=time_unit)
+        #self._set_units(amp_unit=amp_unit,freq_unit=freq_unit,time_unit=time_unit)
         
         #Create status widget to indicate when calculations are running
         self._status = widgets.HTML(value="")
@@ -180,15 +181,15 @@ class Pyriod(object):
         self.lc["mask"] = np.ones(len(self.lc)) # 1 = include
         self.include = np.where(self.lc["mask"])
         
-        #Establish frequency sampling
-        self.set_frequency_sampling(**kwargs)
+        #Establish frequency sampling, with controls in object
+        self._fs = freqsettings._freq_settings(self.lc.time,self._freqs_changed)
         
         #Initialize time series widgets and plots
         self._init_timeseries_widgets()
         self.lcfig,self.lcax = plt.subplots(figsize=(7,2),num='Time Series ({:d})'.format(self.id))
         self.lcax.set_position([0.13,0.22,0.85,0.76])
         self._lc_colors = {0:"bisque",1:"C0"}
-        self.lcplot_data = self.lcax.scatter(self.lc.time.value/self.time_to_days,self.lc.flux.value,marker='o',
+        self.lcplot_data = self.lcax.scatter(self.lc.time.value,self.lc.flux.value,marker='o',
                                              s=5, ec='None', lw=1, c=self._lc_colors[1])
         #Define selector for masking points
         self.selector = lasso_selector(self.lcax, self.lcplot_data)
@@ -201,8 +202,8 @@ class Pyriod(object):
         #self._mask_changed()
         
         #Also plot the model over the time series
-        dt = np.median(np.diff(self.lc.time.value/self.time_to_days))
-        tspan = (np.max(self.lc.time.value) - np.min(self.lc.time.value))/self.time_to_days
+        dt = np.median(np.diff(self.lc.time.value))
+        tspan = (np.max(self.lc.time.value) - np.min(self.lc.time.value))
         osample = 5
         nsamples = round(osample*tspan/dt)
         time_samples = TimeSeries(time_start=np.min(lc.time),
@@ -215,7 +216,7 @@ class Pyriod(object):
         initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include].value)
         self.lc["model"] = initmodel
         
-        self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value/self.time_to_days,
+        self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value,
                                             self.lc_model_sampled.flux,c='r',lw=1)
         
         #And keep track of residuals time series
@@ -238,6 +239,9 @@ class Pyriod(object):
         self.perfig,self.perax = plt.subplots(figsize=(7,3),num='Periodogram ({:d})'.format(self.id))
         
         #Compute and plot original periodogram
+        self.freqs = self._fs.freqs
+        self.freq_unit = freqsettings.frequnitdict[freqsettings.frequnits[self._fs.frequnitind]]
+        self.amp_conversion = freqsettings.ampunitdict[freqsettings.ampunits[self._fs.ampunitind]]
         self.compute_pers(orig=True)
         
         self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1,c='tab:gray')
@@ -254,7 +258,7 @@ class Pyriod(object):
         
         #Compute spectral window
         #TODO: do with DFT
-        #self.specwin = np.sqrt(LombScargle(self.lc.time*self.freq_conversion, np.ones(self.lc.time.shape),
+        #self.specwin = np.sqrt(LombScargle(self.lc.time*self._fs.to_perday, np.ones(self.lc.time.shape),
         #                                   fit_mean=False).power(self.freqs,method = 'fast'))
         #self.perplot_sw, = self.perax.plot(self.freqs,self.specwin,lw=1)
         
@@ -345,16 +349,18 @@ class Pyriod(object):
                                'minutes':u.min, 'yr':u.yr, 'year':u.yr, 'yrs':u.yr,
                                'years':u.yr, 'epoch':u.yr}[time_unit.lower()]
             self.log(f'Input time unit set to {self.time_unit.to_string()}.')
-        self.freq_conversion = self.time_unit.to(1/self.freq_unit)
+        self._fs.to_perday = self.time_unit.to(1/self.freq_unit)
         self.time_to_days = self.time_unit.to(u.day)
         
     def _set_plot_labels(self):
         #Light curve
-        self.lcax.set_xlabel(f"time ({self.time_unit.to_string()})")
+        self.lcax.set_xlabel(f"time ({self.lc.time.format})")
         self.lcax.set_ylabel("rel. variation")
+        self.lcfig.canvas.draw()
         #Periodogram
-        self.perax.set_ylabel(f"amplitude ({self.amp_unit})")
-        self.perax.set_xlabel(f"frequency ({self.freq_label})")
+        self.perax.set_ylabel(f"amplitude ({freqsettings.ampunits[self._fs.ampunitind]})")
+        self.perax.set_xlabel(f"frequency ({freqsettings.frequnits[self._fs.frequnitind]})")
+        self.perfig.canvas.draw()
         
     
     def _init_timeseries_widgets(self):
@@ -396,7 +402,7 @@ class Pyriod(object):
         
         self._fold = widgets.Checkbox(
             value=False,
-            step=self.fres,
+            step=self._fs.fres,
             description='Fold time series on frequency?',
         )
         self._fold.observe(self._update_lc_display)
@@ -674,50 +680,6 @@ class Pyriod(object):
                 inds.append("f{}".format(i))
             i+=1
         return inds
-    
-    def set_frequency_sampling(self, frequency = None, oversample_factor=5, nyquist_factor=1,
-                                minfreq = None, maxfreq = None):
-        """Set the frequency sampling for periodograms.
-        
-        Parameters
-        ----------
-        frequency : TYPE, optional
-            Explicit set of frequencies to compute periodogram at. The default is None.
-        oversample_factor : FLOAT, optional
-            How many time more densely than the natural frequency resolution of 1/duration to sample frequencies. The default is 5.
-        nyquist_factor : FLOAT, optional
-            How many time beyond the approximate Nyquist frequency to sample periodograms. The default is 1. Overridden by maxfreq, if provided.
-        minfreq : FLOAT
-            Minimum frequency of range to use. The default is 1/duration.
-        maxfreq : FLOAT
-            Maximum frequency of range to use. The default is based off of nyquist_factor.
-
-        Returns
-        -------
-        None.
-        """
-        #Frequency resolution
-        self.fres = self.time_to_days/(self.freq_conversion*np.ptp(self.lc.time.value))
-        self.oversample_factor = oversample_factor
-        self.nyquist_factor = nyquist_factor
-        #Compute Nyquist frequency (approximate for unevenly sampled data)
-        dt = np.median(np.diff(self.lc.time.value/self.time_to_days))
-        self.nyquist = 1/(2.*dt*self.freq_conversion)
-        #Sample the following frequencies:
-        if frequency is not None:
-            self.log('Using user supplied frequency sampling: ' + 
-                     '{} samples between frequency {} and {} {}'.format(len(frequency),
-                                                                        np.min(frequency),
-                                                                        np.max(frequency),
-                                                                        self.freq_label))
-            self.freqs = frequency
-        else:
-            if minfreq is None:
-                minfreq = self.fres
-            if maxfreq is None:
-                maxfreq = self.nyquist*self.nyquist_factor+0.9*self.fres/self.oversample_factor
-            self.freqs = np.arange(minfreq,maxfreq,self.fres/self.oversample_factor)
-        return
         
     #Functions for interacting with model fit
     def _make_all_iter(self, variables):
@@ -794,7 +756,7 @@ class Pyriod(object):
             expression = "".join([str(self.stagedvalues.loc[val,'freq']) if val in keys else val for val in exploded])
             freq[i] = eval(expression)
             if amp[i] == None:
-                amp[i] = self.interpls(subfreq(freq[i],self.nyquist)[0])
+                amp[i] = self.interpls(subfreq(freq[i],self._fs.nyqest)[0])
         self.add_signal(list(freq),amp,phase,fixfreq,fixamp,fixphase,include,index=combostr)
         
     def _brute_phase_est(self,freq,amp,brute_step=0.1):
@@ -805,11 +767,11 @@ class Pyriod(object):
         """
         model = Model(sin)
         params = model.make_params()
-        params['freq'].set(self.freq_conversion*freq, vary=False)
+        params['freq'].set(self._fs.to_perday*freq, vary=False)
         params['amp'].set(amp, vary=False) 
         params['phase'].set(0.5, vary=True, min=0, max=1, brute_step=brute_step)
         result = model.fit(self.lc["resid"][self.include]-np.mean(self.lc["resid"][self.include]), 
-                               params, x=(self.lc.time.value[self.include]+self.tshift)/self.time_to_days, 
+                               params, x=(self.lc.time.value[self.include]+self.tshift), 
                                method='brute')
         return result.params['phase'].value
         
@@ -842,12 +804,12 @@ class Pyriod(object):
                 if isindep(prefix):
                     signals[prefix] = Model(sin,prefix=prefix)
                     params.update(signals[prefix].make_params())
-                    params[prefix+'freq'].set(self.freq_conversion*self.stagedvalues.freq[prefix],
+                    params[prefix+'freq'].set(self._fs.to_perday*self.stagedvalues.freq[prefix],
                                               vary=~self.stagedvalues.fixfreq[prefix])
                     params[prefix+'amp'].set(self.stagedvalues.amp[prefix], 
                                              vary=~self.stagedvalues.fixamp[prefix])
                     #Correct phase for tdiff
-                    thisphase = self.stagedvalues.phase[prefix] - self.tshift*self.freq_conversion*self.stagedvalues.freq[prefix]
+                    thisphase = self.stagedvalues.phase[prefix] - self.tshift*self._fs.to_perday*self.stagedvalues.freq[prefix]
                     if np.isnan(thisphase) or self.stagedvalues.brute[prefix]: #if new signal to fit
                         thisphase = self._brute_phase_est(self.stagedvalues.freq[prefix], self.stagedvalues.amp[prefix])
                     
@@ -865,7 +827,7 @@ class Pyriod(object):
                     params[useprefix+'freq'].set(expr=expression)
                     params[useprefix+'amp'].set(self.stagedvalues.amp[prefix], vary=~self.stagedvalues.fixamp[prefix])
                     #Correct phase for tdiff
-                    thisphase = self.stagedvalues.phase[prefix] - self.tshift*self.freq_conversion*self.stagedvalues.freq[prefix]
+                    thisphase = self.stagedvalues.phase[prefix] - self.tshift*self._fs.to_perday*self.stagedvalues.freq[prefix]
                     if np.isnan(thisphase): #if new signal to fit
                         thisphase = self._brute_phase_est(self.stagedvalues.freq[prefix], self.stagedvalues.amp[prefix])
                     params[useprefix+'phase'].set(thisphase, min=-np.inf, max=np.inf,
@@ -877,7 +839,7 @@ class Pyriod(object):
             model = np.sum([signals[prefixmap[prefix]] for prefix in self.stagedvalues.index[self.stagedvalues.include]])
             
             self.fit_result = model.fit(self.lc.flux.value[self.include]-np.mean(self.lc.flux.value[self.include]), 
-                                        params, x=self.lc.time.value[self.include]/self.time_to_days+self.tshift)
+                                        params, x=self.lc.time.value[self.include]+self.tshift)
             
             self.log("Fit refined.")  
             self.log("Fit properties:"+self.fit_result.fit_report())
@@ -900,8 +862,8 @@ class Pyriod(object):
         #cnum = 0
         self.fitvalues = self.stagedvalues.astype(dtype=dict(zip(self.columns,self.dtypes))).drop('brute',1)
         for prefix in self.stagedvalues.index[self.stagedvalues.include]:
-            self.fitvalues.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.freq_conversion)
-            self.fitvalues.loc[prefix,'freqerr'] = float(params[prefixmap[prefix]+'freq'].stderr/self.freq_conversion)
+            self.fitvalues.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self._fs.to_perday)
+            self.fitvalues.loc[prefix,'freqerr'] = float(params[prefixmap[prefix]+'freq'].stderr/self._fs.to_perday)
             self.fitvalues.loc[prefix,'amp'] = params[prefixmap[prefix]+'amp'].value
             self.fitvalues.loc[prefix,'amperr'] = float(params[prefixmap[prefix]+'amp'].stderr)
             self.fitvalues.loc[prefix,'phase'] = params[prefixmap[prefix]+'phase'].value
@@ -911,7 +873,7 @@ class Pyriod(object):
                 self.fitvalues.loc[prefix,'amp'] *= -1.
                 self.fitvalues.loc[prefix,'phase'] -= 0.5
             #Reference phase to t0
-            self.fitvalues.loc[prefix,'phase'] += self.tshift*self.fitvalues.loc[prefix,'freq']*self.freq_conversion
+            self.fitvalues.loc[prefix,'phase'] += self.tshift*self.fitvalues.loc[prefix,'freq']*self._fs.to_perday
             self.fitvalues.loc[prefix,'phase'] %= 1.
         
         self._update_freq_dropdown()
@@ -961,15 +923,15 @@ class Pyriod(object):
             freq = float(self.fitvalues.loc[prefix,'freq'])
             amp = float(self.fitvalues.loc[prefix,'amp'])
             phase = float(self.fitvalues.loc[prefix,'phase'])
-            flux += sin(time,freq*self.freq_conversion,amp,phase)
+            flux += sin(time,freq*self._fs.to_perday,amp,phase)
         return flux
     
     def _update_lcs(self):
         #Update time series models
         meanflux = np.mean(self.lc.flux.value[self.include])
-        self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time.value/self.time_to_days)
+        self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time.value)
         #Observed is at all original times (apply mask before calculations)
-        self.lc["model"] = meanflux + self.sample_model(self.lc.time.value/self.time_to_days)
+        self.lc["model"] = meanflux + self.sample_model(self.lc.time.value)
         self.lc["resid"] = self.lc.flux.value - self.lc["model"]
     
     def _qgrid_changed_manually(self, *args):
@@ -1068,7 +1030,7 @@ class Pyriod(object):
         self._display_lc(residuals = (self._tstype.value == "Residuals"))
         
     def _update_signal_markers(self):
-        subnyquistfreqs = subfreq(self.stagedvalues['freq'][self.stagedvalues.include].astype('float'),self.nyquist)
+        subnyquistfreqs = subfreq(self.stagedvalues['freq'][self.stagedvalues.include].astype('float'),self._fs.nyqest)
         amps = self.stagedvalues['amp'].values[self.stagedvalues.include]*self.amp_conversion
         indep = np.array([key[1:].isdigit() for key in self.stagedvalues.index[self.stagedvalues.include]])
         
@@ -1093,7 +1055,7 @@ class Pyriod(object):
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin),ymax+0.05*(ymax-ymin))
         #fold if requested
         if self._fold.value:
-            xdata=lc.time.value*self._fold_on.value*self.freq_conversion % 1.
+            xdata=lc.time.value*self._fold_on.value*self._fs.to_perday % 1.
             self.lcplot_data.set_offsets(np.dstack((xdata,lc.flux.value))[0])
             #self.lcplot_model.set_alpha(0)
             self.lcax.set_xlim(-0.01,1.01)
@@ -1157,10 +1119,21 @@ class Pyriod(object):
         self._log_per_properties()
         self._update_status(False)#Calculation complete
         
+    def _freqs_changed(self):
+        self.freqs = self._fs.freqs
+        self.freq_unit = freqsettings.frequnitdict[freqsettings.frequnits[self._fs.frequnitind]]
+        self.amp_conversion = freqsettings.ampunitdict[freqsettings.ampunits[self._fs.ampunitind]]
+        self.compute_pers(orig=True)
+        self._set_plot_labels()
+        self._update_per_plots()
+        
     def _update_per_plots(self):
-        self.perplot_orig.set_ydata(self.per_orig.power.value)
-        self.perplot_model.set_ydata(self.per_model.power.value)
-        self.perplot_resid.set_ydata(self.per_resid.power.value)
+        #self.perplot_orig.set_ydata(self.per_orig.power.value)
+        #self.perplot_model.set_ydata(self.per_model.power.value)
+        #self.perplot_resid.set_ydata(self.per_resid.power.value)
+        self.perplot_orig.set_data(self.freqs,self.per_orig.power.value)
+        self.perplot_model.set_data(self.freqs,self.per_model.power.value)
+        self.perplot_resid.set_data(self.freqs,self.per_resid.power.value)
         self.perfig.canvas.draw()
    
     def _display_per_orig(self, *args):
@@ -1205,7 +1178,7 @@ class Pyriod(object):
         if self._snaptopeak.value:
             #click within either frequency resolution or 1% of displayed range
             #TODO: make this work with log frequency too
-            tolerance = np.max([self.fres,0.01*np.diff(self.perax.get_xlim())])
+            tolerance = np.max([self._fs.fres,0.01*np.diff(self.perax.get_xlim())])
             
             nearby = np.argwhere((self.freqs >= event.xdata - tolerance) & 
                                  (self.freqs <= event.xdata + tolerance))
