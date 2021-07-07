@@ -300,6 +300,7 @@ class Pyriod(object):
         self.signals_qgrid = self._get_qgrid()
         self.signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
         self._init_signals_widgets()
+        self._update_fit_report()#No fit to report
         
         self.log("Pyriod object initialized.")
         #Write lightkurve and periodogram properties to log
@@ -579,6 +580,8 @@ class Pyriod(object):
             icon='load'
         )
         self._load.on_click(self._load_button_click)
+        
+        self._fit_result_html = widgets.HTML(" ")
     
         
     def _init_log(self):
@@ -820,6 +823,7 @@ class Pyriod(object):
         if np.sum(self.stagedvalues.include.values) == 0:
             self.log("No signals to fit.",level='warning')
             self.fitvalues = self._initialize_dataframe().drop('brute',1) #Empty
+            self.fit_result = None #no fit
         else: #Fit a model
             #Set up lmfit model for fitting
             signals = {} #empty dict to be populated
@@ -884,6 +888,7 @@ class Pyriod(object):
         self.compute_pers()
         self._update_per_plots()
         self._mark_highest_peak()#Mark highest peak in residuals
+        self._update_fit_report()
         
         self._update_status(False)#Calculation done
         self._model_current(True)#fitvalues and stagedvalues are the same
@@ -945,6 +950,12 @@ class Pyriod(object):
         #self.compute_pers()
         #self._update_per_plots()
         #self._update_freq_dropdown()
+        
+    def _update_fit_report(self):
+        if self.fit_result is None:
+            self._fit_result_html.value = "No fit to report."
+        else:
+            self._fit_result_html.value = self.fit_result._repr_html_()
         
     def _model_current(self,current = True):
         """update self.uptodate to whether displayed date reflect model fit
@@ -1281,10 +1292,13 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
+        fitreport = widgets.Accordion(children=[self._fit_result_html],selected_index=None)
+        fitreport.set_title(0, 'fit report')
         return VBox([self._status,
                      HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
                      self.signals_qgrid,
-                     HBox([self._save,self._load,self._signals_file_location])])
+                     HBox([self._save,self._load,self._signals_file_location]),
+                     fitreport])
         
     def Log(self):
         return self._logbox
