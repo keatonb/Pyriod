@@ -911,6 +911,13 @@ class Pyriod(object):
         
         self._update_freq_dropdown()
         
+        #Add periods and period uncertainties
+        pers = 1./self.fitvalues['freq']*self.freq_conversion #days
+        pers = pers*24*3600 #seconds
+        pererrs = pers*self.fitvalues['freqerr']/self.fitvalues['freq']
+        self.fitvalues['per'] = pers
+        self.fitvalues['pererr'] = pererrs
+        
         #update qgrid
         self.signals_qgrid.df = self._convert_fitvalues_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())
         self._update_stagedvalues_from_qgrid()
@@ -1004,6 +1011,7 @@ class Pyriod(object):
         self.log("Deleted signals {}".format([sig for sig in indices]))
         self.stagedvalues = self.stagedvalues.drop(indices)
         self.signals_qgrid.df = self.signals_qgrid.get_changed_df().drop(indices)
+        self._model_current(current = False) #not deleted until re-fit
     
     def _delete_selected(self, *args):
         self.delete_rows(self.signals_qgrid.get_selected_df().index)
@@ -1031,6 +1039,8 @@ class Pyriod(object):
         currentind = self._select_fold_freq.index
         if currentind == None:
             currentind = 0
+        elif currentind >= len(labels):
+            currentind = len(labels)-1
         if len(labels) == 0:
             self._select_fold_freq.options = [None]
         else:
