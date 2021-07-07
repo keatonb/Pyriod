@@ -1162,12 +1162,13 @@ class Pyriod(object):
         if orig:
             self.per_orig = self.lc[self.include].to_periodogram(normalization='amplitude',freq_unit=self.freq_unit,
                                                                  frequency=self.freqs)*self.amp_conversion
-        self.per_model = self.lc.select_flux("model")[self.include].to_periodogram(normalization='amplitude',
-                                                                                   freq_unit=self.freq_unit,
-                                                                                   frequency=self.freqs)*self.amp_conversion
-        self.per_resid = self.lc.select_flux("resid")[self.include].to_periodogram(normalization='amplitude',
-                                                                                   freq_unit=self.freq_unit,
-                                                                                   frequency=self.freqs)*self.amp_conversion
+        with np.errstate(invalid='ignore'):
+            self.per_model = self.lc.select_flux("model")[self.include].to_periodogram(normalization='amplitude',
+                                                                                       freq_unit=self.freq_unit,
+                                                                                       frequency=self.freqs)*self.amp_conversion
+            self.per_resid = self.lc.select_flux("resid")[self.include].to_periodogram(normalization='amplitude',
+                                                                                       freq_unit=self.freq_unit,
+                                                                                       frequency=self.freqs)*self.amp_conversion
         self.interpls = interp1d(self.freqs,self.per_resid.power.value)
         self._log_per_properties()
         self._update_status(False)#Calculation complete
