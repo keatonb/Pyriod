@@ -203,7 +203,7 @@ class Pyriod(object):
         dt = np.median(np.diff(self.lc.time.value))
         tspan = (np.max(self.lc.time.value) - np.min(self.lc.time.value))
         osample = 5
-        nsamples = round(osample*tspan/dt)
+        nsamples = int(round(osample*tspan/dt))
         time_samples = TimeSeries(time_start=np.min(lc.time),
                                   time_delta= dt * u.day / osample,
                                   n_samples=nsamples).time
@@ -292,7 +292,7 @@ class Pyriod(object):
         
         #Hold signal phases, frequencies, and amplitudes in Pandas DF
         self.stagedvalues = self._initialize_dataframe()
-        self.fitvalues = self.stagedvalues.copy().drop('brute',1)
+        self.fitvalues = self.stagedvalues.copy().drop('brute',axis=1)
         
         
         #The interface for interacting with the values DataFrame:
@@ -876,7 +876,8 @@ class Pyriod(object):
             model = np.sum([signals[prefixmap[prefix]] for prefix in self.stagedvalues.index[self.stagedvalues.include]])
             
             self.fit_result = model.fit(self.lc.flux.value[self.include]-np.mean(self.lc.flux.value[self.include]), 
-                                        params, x=self.lc.time.value[self.include]+self.tshift)
+                                        params, x=self.lc.time.value[self.include]+self.tshift, 
+                                        weights = 1/self.lc.flux_err.value[self.include], scale_covar=False)#TESTING
             
             self.log("Fit refined.")  
             self.log("Fit properties:"+self.fit_result.fit_report())
