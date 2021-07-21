@@ -16,8 +16,6 @@ For now, the times are expected to be given in days and frequencies will be disp
 
 ## Time Series tab
 
-#include "TimeSeries.md"
-
 To display and interact with the time series data, call
 ````
 pyriod.TimeSeries()
