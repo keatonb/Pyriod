@@ -63,6 +63,7 @@ else:
 
 #Third party imports
 import numpy as np
+import gh_md_to_html
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
@@ -402,6 +403,11 @@ class Pyriod(object):
             disabled=False,
         )
         self._select_fold_freq.observe(self._fold_freq_selected,'value')
+        
+        #Readme
+        readmefile = '../docs/TimeSeries.md'
+        html = gh_md_to_html.main(readmefile)
+        self._timeseries_readme = widgets.HTML(html) 
     
     def _init_periodogram_widgets(self):
         ### Periodogram widget stuff  ###
@@ -495,6 +501,11 @@ class Pyriod(object):
         )
         self._show_per_sw.observe(self._display_per_sw)
         '''
+        
+        #Readme
+        readmefile = '../docs/Periodogram.md'
+        html = gh_md_to_html.main(readmefile)
+        self._periodogram_readme = widgets.HTML(html) 
     
     def _init_signals_qgrid(self):
         #Set some options for how the qgrid of values should be displayed
@@ -582,7 +593,11 @@ class Pyriod(object):
         self._load.on_click(self._load_button_click)
         
         self._fit_result_html = widgets.HTML(" ")
-    
+        
+        #Readme
+        readmefile = '../docs/Signals.md'
+        html = gh_md_to_html.main(readmefile)
+        self._signals_readme = widgets.HTML(html) 
         
     def _init_log(self):
         #To log messages, use self.log() function
@@ -1233,16 +1248,19 @@ class Pyriod(object):
             self._update_marker(event.xdata,self.interpls(event.xdata))
             
     def TimeSeries(self):
-        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask])],selected_index=None)
+        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask]),self._timeseries_readme],selected_index=None)
         options.set_title(0, 'options')
+        options.set_title(1, 'info ')
+        #readme = widgets.Accordion(children=[self._timeseries_readme])
         savefig = HBox([self._save_tsfig,self._tsfig_file_location])
         return VBox([self._status,self.lcfig.canvas,savefig,options])
        
     def Periodogram(self):
         options = widgets.Accordion(children=[VBox([self._snaptopeak,self._show_per_markers,
                         self._show_per_orig,self._show_per_resid,
-                        self._show_per_model])],selected_index=None)
+                        self._show_per_model]),self._periodogram_readme],selected_index=None)
         options.set_title(0, 'options')
+        options.set_title(1, 'info ')
         savefig = HBox([self._save_perfig,self._perfig_file_location])
         periodogram = VBox([self._status,
                             HBox([self._thisfreq,self._thisamp]),
@@ -1294,8 +1312,10 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
-        fitreport = widgets.Accordion(children=[self._fit_result_html],selected_index=None)
+        fitreport = widgets.Accordion(children=[self._fit_result_html, self._signals_readme],
+                                      selected_index=None)
         fitreport.set_title(0, 'fit report')
+        fitreport.set_title(1, 'info ')
         return VBox([self._status,
                      HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
                      self.signals_qgrid,
