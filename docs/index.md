@@ -31,7 +31,7 @@ jupyter nbextension enable --py --sys-prefix ipympl
 
 ## Dependencies
 
-Pyriod should work with Python 2.7 or 3. 
+Pyriod requires Python 3.
 
 You can view a list of package requirements [here](https://github.com/keatonb/Pyriod/blob/master/requirements.txt). Beyond more standard packages of astronomy research and plotting (Astropy, Pandas, ipywidgets, etc.), these few specific projects really made Pyriod possible, and are worth looking into if you want to understand or extend the code:
 
