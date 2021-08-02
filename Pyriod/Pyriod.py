@@ -201,7 +201,7 @@ class Pyriod(object):
         #self._mask_changed()
         
         #Also plot the model over the time series
-        dt = np.median(np.diff(self.lc.time.value))
+        dt = np.min(np.diff(self.lc.time.value))
         tspan = (np.max(self.lc.time.value) - np.min(self.lc.time.value))
         osample = 5
         nsamples = int(round(osample*tspan/dt))
@@ -216,7 +216,8 @@ class Pyriod(object):
         self.lc["model"] = initmodel
         
         self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value,
-                                            self.lc_model_sampled.flux,c='r',lw=1)
+                                            self.lc_model_sampled.flux,c='r',
+                                            lw=1,alpha = 0.7)
         
         #And keep track of residuals time series
         self.lc["resid"] = self.lc["flux"].value - self.lc["model"].value
@@ -807,7 +808,7 @@ class Pyriod(object):
             expression = "".join([str(self.stagedvalues.loc[val,'freq']) if val in keys else val for val in exploded])
             freq[i] = eval(expression)
             if amp[i] == None:
-                amp[i] = self.interpls(subfreq(freq[i],self.nyquist)[0])
+                amp[i] = self.interpls(freq[i])
         self.add_signal(list(freq),amp,phase,fixfreq,fixamp,fixphase,include,index=combostr)
         
     def _brute_phase_est(self,freq,amp,brute_step=0.1):
@@ -1035,6 +1036,9 @@ class Pyriod(object):
               'float','bool','bool','float']
     
     def delete_rows(self,indices):
+        if len("indices") == 0:
+            self.log("No signals selected for deletion.",'warning')
+            pass
         self.log("Deleted signals {}".format([sig for sig in indices]))
         self.stagedvalues = self.stagedvalues.drop(indices)
         self.signals_qgrid.df = self.signals_qgrid.get_changed_df().drop(indices)
@@ -1100,13 +1104,14 @@ class Pyriod(object):
         self._display_lc(residuals = (self._tstype.value == "Residuals"))
         
     def _update_signal_markers(self):
-        subnyquistfreqs = subfreq(self.stagedvalues['freq'][self.stagedvalues.include].astype('float'),self.nyquist)
+        #subnyquistfreqs = subfreq(self.stagedvalues['freq'][self.stagedvalues.include].astype('float'),self.nyquist)
+        freqs = self.stagedvalues['freq'][self.stagedvalues.include].values
         amps = self.stagedvalues['amp'].values[self.stagedvalues.include]*self.amp_conversion
         indep = np.array([key[1:].isdigit() for key in self.stagedvalues.index[self.stagedvalues.include]])
         
-        self.signal_markers.set_data(subnyquistfreqs[np.where(indep)],amps[np.where(indep)])
+        self.signal_markers.set_data(freqs[np.where(indep)],amps[np.where(indep)])
         if len(indep) > 0:
-            self.combo_markers.set_data(subnyquistfreqs[np.where(~indep)],amps[np.where(~indep)])
+            self.combo_markers.set_data(freqs[np.where(~indep)],amps[np.where(~indep)])
         else:
             self.combo_markers.set_data([],[])
         self.perfig.canvas.draw()
@@ -1185,7 +1190,7 @@ class Pyriod(object):
             self.per_resid = self.lc.select_flux("resid")[self.include].to_periodogram(normalization='amplitude',
                                                                                        freq_unit=self.freq_unit,
                                                                                        frequency=self.freqs)*self.amp_conversion
-        self.interpls = interp1d(self.freqs,self.per_resid.power.value)
+        self.interpls = interp1d(self.freqs,self.per_resid.power.value,bounds_error=False,fill_value=self.per_resid.max_power.value)
         self._log_per_properties()
         self._update_status(False)#Calculation complete
         

@@ -8,7 +8,7 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="Pyriod",
-    version="0.0.13",
+    version="0.1.0",
     author="Keaton Bell",
     author_email="keatonbell@utexas.edu",
     description="Basic period detection and fitting routines for astronomical time series.",
@@ -18,7 +18,7 @@ setuptools.setup(
     install_requires=requirements,
     packages=setuptools.find_packages(),
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Programming Language :: Python",
         "License :: OSI Approved :: GNU General Public License (GPL)",
         "Operating System :: OS Independent",
