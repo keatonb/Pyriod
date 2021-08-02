@@ -1,32 +1,34 @@
 # Tutorial
 
-Pyriod is primarily meant to be run interactively in a Jupyter Notebook (does not work in JupiterLab because of Qgrid compatibility issues; convenient functions for scripting analyses without the GUI are being developed).  To display the interactive widgets, you must type the `%matplotlib widget` magic command at the top of your Jupyter notebook.  Then import Pyriod.
+Pyriod is primarily meant to be run interactively in a Jupyter Notebook (does not work in JupiterLab because of Qgrid compatibility issues).  To display the interactive widgets, you must type the `%matplotlib widget` magic command at the top of your Jupyter notebook.  Then import Pyriod.
 ````
 %matplotlib widget
 from Pyriod import Pyriod
 ````
-Time series data can be provided as a lightkurve.LightCurve object (preferred) or from time and flux arrays when the Pyriod class is instantiated.
+Time series data must be passed as a lightkurve.LightCurve object when the Pyriod class is instantiated.
 ````
 import lightkurve as lk
-lc = lk.search_lightcurvefile('TIC 257459955',mission='TESS',sector=3).download().get_lightcurve("PDCSAP_FLUX").flatten(2161).remove_outliers(5)
+lc = lk.search_lightcurve('TIC 257459955',mission='TESS',sector=3)[0].download().remove_nans().flatten(2161).remove_outliers(5)
 
 pyriod = Pyriod(lc)
 ````
-For now, the times are expected to be given in days and frequencies will be displayed in microHz, though providing other unit options is as planned improvement.  The units for providing signal amplitudes can be chosen from `['relative', 'percent', 'ppt', 'ppm', 'mma']`.
+The times in the light curve are expected to be given in days. Frequencies can be either in microHertz (default) or 1/day (`freq_unit="1/d"`). The units for providing signal amplitudes can be chosen with `amp_unit=` one of `['relative', 'percent', 'ppt', 'ppm', 'mma']`.
 
-## Time Series tab
+## Time Series cell
 
 To display and interact with the time series data, call
 ````
 pyriod.TimeSeries()
 ````
-You can zoom around on or save the figure from the toolbar. As you fit frequency solutions, the red line will display the current model. From the accordion dropdown you can access options, including choosing whether to display the original or residuals time series, as well as folding the time series on some frequency.
+You can zoom around on or save the figure from the toolbar. As you fit frequency solutions, the red line will display the current model. From the accordion dropdown you can access additional options, including choosing whether to display the original or residuals time series, as well as folding the time series on some frequency.
+
+Without the pan or zoom tools selected, you can select points you want to exclude from your fit with a lasso selector, and exclude them with delete or backspace.  You can restore these points under the options tab.
 
 ![Screenshot](img/TimeSeries.png)
 
-## Periodogram tab
+## Periodogram cell
 
-Access the periodogram tab by calling
+Access the periodogram cell by calling
 ````
 pyriod.Periodogram()
 ````
@@ -37,7 +39,7 @@ You can expand the options to choose which periodograms to display in the plot a
 
 ![Screenshot](img/Periodogram.png)
 
-## Signals tab
+## Signals cell
 
 You can display a table of signals in your frequency solution by calling
 ````
@@ -55,7 +57,7 @@ You can save the frequency solution to the provided csv filename (relative path)
 
 ![Screenshot](img/Signals.png)
 
-## Log
+## Log cell
 The Log records important actions taken as part of your analysis for reproducibility and can be saved to plain text.
 
 ````
@@ -69,6 +71,6 @@ Finally, if you want to do your entire analysis in a single cell with a single c
 ````
 pyriod.Pyriod()
 ````
-and navigate between the different tabs.  This may be a little buggy in Python 3, but should work in 2.7.
+and navigate between the different tabs.
 
 ![Screenshot](img/Pyriod.png)

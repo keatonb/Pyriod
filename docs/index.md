@@ -6,7 +6,7 @@ Pyriod aims to eventually provide most of the functionality of the wonderful pro
 
 The interactive GUI runs in a Jupyter Notebook (not compatible with JupyterLab).
 
-This is a serious work in progress with many planned improvements. Please be patient, but also feel free to request new features on the issues page on [GitHub](https://github.com/keatonb/Pyriod/issues).
+This is a work in progress with many planned improvements. Please be patient, but also feel free to request new features on the issues page on [GitHub](https://github.com/keatonb/Pyriod/issues).
 
 Pyriod is written and maintained by [Keaton Bell](http://staff.washington.edu/keatonb/).
 
@@ -22,7 +22,7 @@ or download the latest (possibly unstable) version from [GitHub](https://github.
 
 This code uses [Qgrid](https://github.com/quantopian/qgrid) to interactively display the frequency solution. 
 
-To display the widgets as part of the Pyriod GUI, you will need to first enable the following Jupyter notebook extensions in the terminal:
+To display the widgets as part of the Pyriod GUI, you will need to enable the following Jupyter notebook extensions in the terminal before starting your Jupyter server:
 ```
 jupyter nbextension enable --py --sys-prefix qgrid
 jupyter nbextension enable --py --sys-prefix widgetsnbextension
