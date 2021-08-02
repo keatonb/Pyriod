@@ -838,7 +838,7 @@ class Pyriod(object):
         
         if np.sum(self.stagedvalues.include.values) == 0:
             self.log("No signals to fit.",level='warning')
-            self.fitvalues = self._initialize_dataframe().drop('brute',1) #Empty
+            self.fitvalues = self._initialize_dataframe().drop('brute',axis=1) #Empty
             self.fit_result = None #no fit
         else: #Fit a model
             #Set up lmfit model for fitting
@@ -915,7 +915,7 @@ class Pyriod(object):
         #also rectify and negative amplitudes or phases outside [0,1)
         #isindep = lambda key: key[1:].isdigit()
         #cnum = 0
-        self.fitvalues = self.stagedvalues.astype(dtype=dict(zip(self.columns,self.dtypes))).drop('brute',1)
+        self.fitvalues = self.stagedvalues.astype(dtype=dict(zip(self.columns,self.dtypes))).drop('brute',axis=1)
         for prefix in self.stagedvalues.index[self.stagedvalues.include]:
             self.fitvalues.loc[prefix,'freq'] = float(params[prefixmap[prefix]+'freq'].value/self.freq_conversion)
             self.fitvalues.loc[prefix,'freqerr'] = float(params[prefixmap[prefix]+'freq'].stderr/self.freq_conversion)
