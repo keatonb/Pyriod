@@ -201,9 +201,9 @@ class Pyriod(object):
         #self._mask_changed()
         
         #Also plot the model over the time series
-        dt = np.min(np.diff(self.lc.time.value))
-        tspan = (np.max(self.lc.time.value) - np.min(self.lc.time.value))
-        osample = 5
+        dt = np.min(np.diff(sorted(lc.time.value)))
+        tspan = (np.max(lc.time.value) - np.min(lc.time.value))
+        osample = 2
         nsamples = int(round(osample*tspan/dt))
         time_samples = TimeSeries(time_start=np.min(lc.time),
                                   time_delta= dt * u.day / osample,
@@ -334,7 +334,7 @@ class Pyriod(object):
             perday = (1/u.day).unit
             self.freq_unit = {'muhz':muHz, 'uhz':muHz, 'microhertz':muHz, 
                               '1/d':perday, '1/day':perday, 'day':perday,
-                              'days':perday, 'd':perday}[freq_unit.lower()]
+                              'days':perday, 'd':perday, 'per day':perday}[freq_unit.lower()]
             self.freq_label = {perday:"1/day",muHz:"muHz"}[self.freq_unit]
             self.log(f'Frequency unit set to {self.freq_label}.')
         self.time_unit = u.day 

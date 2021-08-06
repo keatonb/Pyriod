@@ -1,3 +1,6 @@
 include README.md
 include LICENSE
 include requirements.txt
+include docs/TimeSeries.md
+include docs/Periodogram.md
+include docs/Signals.md
