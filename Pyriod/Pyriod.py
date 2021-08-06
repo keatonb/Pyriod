@@ -47,12 +47,14 @@ Names of plots are:
 TODO: Show smoothed light curve (and when folded)
 
 """
+
 #Standard imports
 import sys
 import os
 import itertools
 import re
 import logging
+from pathlib import Path
 if sys.version_info < (3, 0):
     #from io import BytesIO as StringIO
     from StringIO import StringIO
@@ -73,7 +75,7 @@ from lmfit import Model, Parameters
 from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 from matplotlib.widgets import LassoSelector
-from matplotlib.path import Path
+from matplotlib.path import Path as mplpath #oh boy
 import ipywidgets as widgets
 from ipywidgets import HBox,VBox
 import qgrid
@@ -119,7 +121,7 @@ class lasso_selector(object):
         self.lasso = LassoSelector(ax, onselect=self.onselect)
         self.ind = []
     def onselect(self, verts):
-        path = Path(verts)
+        path = mplpath.Path(verts)
         self.ind = np.nonzero(path.contains_points(self.xys))[0]
         
         ec = np.array(["None" for i in range(self.Npts)])
@@ -406,8 +408,8 @@ class Pyriod(object):
         self._select_fold_freq.observe(self._fold_freq_selected,'value')
         
         #Readme
-        readmefile = '../docs/TimeSeries.md'
-        html = gh_md_to_html.main(readmefile)
+        path = Path(__file__).parent / '../docs/TimeSeries.md'
+        html = gh_md_to_html.main(str(path))
         self._timeseries_readme = widgets.HTML(html) 
     
     def _init_periodogram_widgets(self):
@@ -504,8 +506,8 @@ class Pyriod(object):
         '''
         
         #Readme
-        readmefile = '../docs/Periodogram.md'
-        html = gh_md_to_html.main(readmefile)
+        path = Path(__file__).parent / '../docs/Periodogram.md'
+        html = gh_md_to_html.main(str(path))
         self._periodogram_readme = widgets.HTML(html) 
     
     def _init_signals_qgrid(self):
@@ -596,8 +598,8 @@ class Pyriod(object):
         self._fit_result_html = widgets.HTML(" ")
         
         #Readme
-        readmefile = '../docs/Signals.md'
-        html = gh_md_to_html.main(readmefile)
+        path = Path(__file__).parent / '../docs/Signals.md'
+        html = gh_md_to_html.main(str(path))
         self._signals_readme = widgets.HTML(html) 
         
     def _init_log(self):
