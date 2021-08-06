@@ -136,6 +136,12 @@ class lasso_selector(object):
         ec = np.array(["None" for i in range(self.Npts)])
         self.collection.set_edgecolors(ec)
         self.canvas.draw_idle()
+        
+def getAbsPath(relpath):
+    path = Path(__file__).parent 
+    if str(path)[-14:] == '/Pyriod/Pyriod':
+        path = path.parent
+    return str(path / relpath)
 
 class Pyriod(object):
     """Time series periodic analysis class.
@@ -408,8 +414,7 @@ class Pyriod(object):
         self._select_fold_freq.observe(self._fold_freq_selected,'value')
         
         #Readme
-        path = Path(__file__).parent / '../docs/TimeSeries.md'
-        html = gh_md_to_html.main(str(path))
+        html = gh_md_to_html.main(getAbsPath('docs/TimeSeries.md'))
         self._timeseries_readme = widgets.HTML(html) 
     
     def _init_periodogram_widgets(self):
@@ -506,8 +511,7 @@ class Pyriod(object):
         '''
         
         #Readme
-        path = Path(__file__).parent / '../docs/Periodogram.md'
-        html = gh_md_to_html.main(str(path))
+        html = gh_md_to_html.main(getAbsPath('docs/Periodogram.md'))
         self._periodogram_readme = widgets.HTML(html) 
     
     def _init_signals_qgrid(self):
@@ -598,8 +602,7 @@ class Pyriod(object):
         self._fit_result_html = widgets.HTML(" ")
         
         #Readme
-        path = Path(__file__).parent / '../docs/Signals.md'
-        html = gh_md_to_html.main(str(path))
+        html = gh_md_to_html.main(getAbsPath('docs/Signals.md'))
         self._signals_readme = widgets.HTML(html) 
         
     def _init_log(self):
