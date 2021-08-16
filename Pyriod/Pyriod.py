@@ -82,7 +82,7 @@ import qgrid
 from ipyfilechooser import FileChooser
 
 #Local imports
-from .pyquist import subfreq
+#from .pyquist import subfreq
 
 plt.ioff()#Turn off interactive mode
 
@@ -121,7 +121,7 @@ class lasso_selector(object):
         self.lasso = LassoSelector(ax, onselect=self.onselect)
         self.ind = []
     def onselect(self, verts):
-        path = mplpath.Path(verts)
+        path = mplpath(verts)
         self.ind = np.nonzero(path.contains_points(self.xys))[0]
         
         ec = np.array(["None" for i in range(self.Npts)])
@@ -136,6 +136,8 @@ class lasso_selector(object):
         ec = np.array(["None" for i in range(self.Npts)])
         self.collection.set_edgecolors(ec)
         self.canvas.draw_idle()
+
+
 
 class Pyriod(object):
     """Time series periodic analysis class.
