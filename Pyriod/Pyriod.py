@@ -151,9 +151,10 @@ class Pyriod(object):
 	
     """
     id_generator = itertools.count(0)
-    def __init__(self, lc, amp_unit='ppt', freq_unit='muHz', **kwargs):
+    def __init__(self, lc, amp_unit='ppt', freq_unit='muHz', gui=True, **kwargs):
         #Generate unique Pyriod instance ID
         self.id = next(self.id_generator)
+        self.gui = gui
         
         ### LOG ###
         #Initialize the log first to keep track of every important action taken
@@ -187,41 +188,39 @@ class Pyriod(object):
         #Establish frequency sampling
         self.set_frequency_sampling(**kwargs)
         
-        #Initialize time series widgets and plots
-        self._init_timeseries_widgets()
-        self.lcfig,self.lcax = plt.subplots(figsize=(7,2),num='Time Series ({:d})'.format(self.id))
-        self.lcax.set_position([0.13,0.22,0.85,0.76])
-        self._lc_colors = {0:"bisque",1:"C0"}
-        self.lcplot_data = self.lcax.scatter(self.lc.time.value,self.lc.flux.value,marker='o',
+        #Initialize time series widgets and plots (if in GUI mode)
+        if self.gui:
+            self._init_timeseries_widgets()
+            self.lcfig,self.lcax = plt.subplots(figsize=(7,2),num='Time Series ({:d})'.format(self.id))
+            self.lcax.set_position([0.13,0.22,0.85,0.76])
+            self._lc_colors = {0:"bisque",1:"C0"}
+            self.lcplot_data = self.lcax.scatter(self.lc.time.value,self.lc.flux.value,marker='o',
                                              s=5, ec='None', lw=1, c=self._lc_colors[1])
-        #Define selector for masking points
-        self.selector = lasso_selector(self.lcax, self.lcplot_data)
-        self.lcfig.canvas.mpl_connect("key_press_event", self._mask_selected_pts)
+            #Define selector for masking points
+            self.selector = lasso_selector(self.lcax, self.lcplot_data)
+            self.lcfig.canvas.mpl_connect("key_press_event", self._mask_selected_pts)
         
         #Apply time shift to get phases to be well behaved
         self._calc_tshift()
         
-        #I think this function nearly computes all the periodograms and timeshift and everything...
-        #self._mask_changed()
-        
-        #Also plot the model over the time series
-        dt = np.min(np.diff(sorted(lc.time.value)))
-        tspan = (np.max(lc.time.value) - np.min(lc.time.value))
-        osample = 2
-        nsamples = int(round(osample*tspan/dt))
-        time_samples = TimeSeries(time_start=np.min(lc.time),
-                                  time_delta= dt * u.day / osample,
-                                  n_samples=nsamples).time
-        initmodel = np.zeros(nsamples)+np.mean(self.lc.flux.value)
-        self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
-        
-        #And store version sampled as the data as lc column
+        #Store version sampled as the data as lc column
         initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include].value)
         self.lc["model"] = initmodel
-        
-        self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value,
-                                            self.lc_model_sampled.flux,c='r',
-                                            lw=1,alpha = 0.7)
+        #Also plot the model over the time series
+        if self.gui:
+            dt = np.min(np.diff(sorted(lc.time.value)))
+            tspan = (np.max(lc.time.value) - np.min(lc.time.value))
+            osample = 2
+            nsamples = int(round(osample*tspan/dt))
+            time_samples = TimeSeries(time_start=np.min(lc.time),
+                                      time_delta= dt * u.day / osample,
+                                      n_samples=nsamples).time
+            initmodel = np.zeros(nsamples)+np.mean(self.lc.flux.value)
+            self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
+            
+            self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value,
+                                                self.lc_model_sampled.flux,c='r',
+                                                lw=1,alpha = 0.7)
         
         #And keep track of residuals time series
         self.lc["resid"] = self.lc["flux"].value - self.lc["model"].value
@@ -236,63 +235,66 @@ class Pyriod(object):
         # Display toggle widget _perplot_orig_display
         # TODO: Add color picker _perplot_orig_color
         
-        #Initialize widgets
-        self._init_periodogram_widgets()
-        
-        #Set up some figs/axes for periodogram plots
-        self.perfig,self.perax = plt.subplots(figsize=(7,3),num='Periodogram ({:d})'.format(self.id))
-        
-        #Compute and plot original periodogram
+        #Compute original periodogram
         self.compute_pers(orig=True)
         
-        self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1,c='tab:gray')
-        self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value))
-        self.perax.set_xlim(np.min(self.freqs),np.max(self.freqs))
-        self.perax.set_position([0.13,0.22,0.8,0.76])
-        
-        #Plot periodogram of sampled model and residuals
-        self.perplot_model, = self.perax.plot(self.freqs,self.per_model.power.value,lw=1,c='tab:green')
-        self.perplot_resid, = self.perax.plot(self.freqs,self.per_resid.power.value,lw=1,c='tab:blue')
-        
-        #interpolate to residual periodogram when clicks don't snap to peaks
+        #make interpolator for residual periodogram
         self.interpls = interp1d(self.freqs,self.per_resid.power.value)
         
+        #Initialize widgets and plot
+        if self.gui:
+            self._init_periodogram_widgets()
+        
+            #Set up some figs/axes for periodogram plots
+            self.perfig,self.perax = plt.subplots(figsize=(7,3),num='Periodogram ({:d})'.format(self.id))
+        
+            self.perplot_orig, = self.perax.plot(self.per_orig.frequency,self.per_orig.power.value,lw=1,c='tab:gray')
+            self.perax.set_ylim(0,1.05*np.nanmax(self.per_orig.power.value))
+            self.perax.set_xlim(np.min(self.freqs),np.max(self.freqs))
+            self.perax.set_position([0.13,0.22,0.8,0.76])
+            
+            #Plot periodogram of sampled model and residuals
+            self.perplot_model, = self.perax.plot(self.freqs,self.per_model.power.value,lw=1,c='tab:green')
+            self.perplot_resid, = self.perax.plot(self.freqs,self.per_resid.power.value,lw=1,c='tab:blue')
+        
+            
+            #Create markers for selected peak, adopted signals
+            self.marker = self.perax.plot([0],[0],c='k',marker='o')[0]
+            self._signal_marker_color = 'green'
+            self.signal_markers, = self.perax.plot([],[],marker='D',fillstyle='none',
+                                                   linestyle='None',
+                                                   c=self._signal_marker_color,ms=5)
+            self._combo_marker_color = 'orange'
+            self.combo_markers, = self.perax.plot([],[],marker='D',fillstyle='none',
+                                                   linestyle='None',
+                                                   c=self._combo_marker_color,ms=5)
+            
+            #self._makeperiodsolutionvisible()
+            self._display_per_orig()
+            self._display_per_resid()
+            self._display_per_model()
+            self._display_per_sw()
+            self._display_per_markers()
+            
+            self._mark_highest_peak()
+            
+            #This handles clicking while zooming problems
+            #self.perfig.canvas.mpl_connect('button_press_event', self._onperiodogramclick)
+            self._press= False
+            self._move = False
+            self.perfig.canvas.mpl_connect('button_press_event', self._onpress)
+            self.perfig.canvas.mpl_connect('button_release_event', self._onrelease)
+            self.perfig.canvas.mpl_connect('motion_notify_event', self._onmove)
+            
+            #Set axis labels
+            self._set_plot_labels()
+            
         #Compute spectral window
         #TODO: do with DFT
         #self.specwin = np.sqrt(LombScargle(self.lc.time*self.freq_conversion, np.ones(self.lc.time.shape),
         #                                   fit_mean=False).power(self.freqs,method = 'fast'))
         #self.perplot_sw, = self.perax.plot(self.freqs,self.specwin,lw=1)
         
-        #Create markers for selected peak, adopted signals
-        self.marker = self.perax.plot([0],[0],c='k',marker='o')[0]
-        self._signal_marker_color = 'green'
-        self.signal_markers, = self.perax.plot([],[],marker='D',fillstyle='none',
-                                               linestyle='None',
-                                               c=self._signal_marker_color,ms=5)
-        self._combo_marker_color = 'orange'
-        self.combo_markers, = self.perax.plot([],[],marker='D',fillstyle='none',
-                                               linestyle='None',
-                                               c=self._combo_marker_color,ms=5)
-        
-        #self._makeperiodsolutionvisible()
-        self._display_per_orig()
-        self._display_per_resid()
-        self._display_per_model()
-        self._display_per_sw()
-        self._display_per_markers()
-        
-        self._mark_highest_peak()
-        
-        #This handles clicking while zooming problems
-        #self.perfig.canvas.mpl_connect('button_press_event', self._onperiodogramclick)
-        self._press= False
-        self._move = False
-        self.perfig.canvas.mpl_connect('button_press_event', self._onpress)
-        self.perfig.canvas.mpl_connect('button_release_event', self._onrelease)
-        self.perfig.canvas.mpl_connect('motion_notify_event', self._onmove)
-        
-        #Set axis labels
-        self._set_plot_labels()
         
         ### SIGNALS ###
         
@@ -300,13 +302,13 @@ class Pyriod(object):
         self.stagedvalues = self._initialize_dataframe()
         self.fitvalues = self.stagedvalues.copy().drop('brute',axis=1)
         
-        
+        if self.gui:
         #The interface for interacting with the values DataFrame:
-        self._init_signals_qgrid()
-        self.signals_qgrid = self._get_qgrid()
-        self.signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
-        self._init_signals_widgets()
-        self._update_fit_report()#No fit to report
+            self._init_signals_qgrid()
+            self.signals_qgrid = self._get_qgrid()
+            self.signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
+            self._init_signals_widgets()
+            self._update_fit_report()#No fit to report
         
         self.log("Pyriod object initialized.")
         #Write lightkurve and periodogram properties to log
@@ -316,8 +318,9 @@ class Pyriod(object):
         #Keep track of whether the displayed data reflect the most recent fit
         self.uptodate = True
         
-        #Create some decoy figure so users don't accidentally plot over the Pyriod ones
-        _ = plt.figure()
+        if self.gui:
+            #Create some decoy figure so users don't accidentally plot over the Pyriod ones
+            _ = plt.figure()
     
     ###### initialization functions #######
     
@@ -615,40 +618,41 @@ class Pyriod(object):
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
         
-        self._log = widgets.HTML(
-            value='Log',
-            placeholder='Log',
-            description='Log:',
-            layout={'height': '250px','width': '950px'}
-        )
-        
-        self._log_file_location = FileChooser(
-            os.getcwd(),
-            filename='Pyriod_log.txt',
-            #title='<b>FileChooser example</b>',
-            show_hidden=False,
-            select_default=True,
-            use_dir_icons=True,
-            show_only_dirs=False
-        )
-        
-        self._save_log = widgets.Button(
-            description="Save",
-            disabled=False,
-            tooltip='Save log to csv file.',
-            icon='save'
-        )
-        self._save_log.on_click(self._save_log_button_click)
-        
-        self._overwrite = widgets.Checkbox(
-            value=False,
-            description='Overwrite?'
-        )
-        
-        self._logbox = VBox([widgets.Box([self._log]),
-                             HBox([self._save_log,self._log_file_location,self._overwrite],layout={'height': '40px'})],
-                            layout={'height': '300px','width': '950px'})
-        
+        if self.gui:
+            self._log = widgets.HTML(
+                value='Log',
+                placeholder='Log',
+                description='Log:',
+                layout={'height': '250px','width': '950px'}
+            )
+            
+            self._log_file_location = FileChooser(
+                os.getcwd(),
+                filename='Pyriod_log.txt',
+                #title='<b>FileChooser example</b>',
+                show_hidden=False,
+                select_default=True,
+                use_dir_icons=True,
+                show_only_dirs=False
+            )
+            
+            self._save_log = widgets.Button(
+                description="Save",
+                disabled=False,
+                tooltip='Save log to csv file.',
+                icon='save'
+            )
+            self._save_log.on_click(self._save_log_button_click)
+            
+            self._overwrite = widgets.Checkbox(
+                value=False,
+                description='Overwrite?'
+            )
+            
+            self._logbox = VBox([widgets.Box([self._log]),
+                                 HBox([self._save_log,self._log_file_location,self._overwrite],layout={'height': '40px'})],
+                                layout={'height': '300px','width': '950px'})
+            
         self.log(f'Initiating Pyriod instance {self.id}.')
         
     #Function for logging messages
@@ -661,7 +665,8 @@ class Pyriod(object):
             'critical': self.logger.critical
             }
         logdict[level](message+'<br>')
-        self._update_log()
+        if self.gui:
+            self._update_log()
         
     def _log_lc_properties(self):
         #If lc has metadata, put it in the log
@@ -783,11 +788,12 @@ class Pyriod(object):
         toappend = pd.DataFrame(dictvals,columns=self.columns,index=index)
         toappend = toappend.astype(dtype=dict(zip(self.columns,self.dtypes)))
         self.stagedvalues = self.stagedvalues.append(toappend,sort=False)
-        self._update_freq_dropdown() #For folding time series
-        displayframe = self.stagedvalues.copy()
-        displayframe["amp"] = displayframe["amp"] * self.amp_conversion
-        self.signals_qgrid.df = displayframe.combine_first(self.signals_qgrid.df) #Update displayed values
-        self._update_signal_markers()
+        if self.gui:
+            self._update_freq_dropdown() #For folding time series
+            displayframe = self.stagedvalues.copy()
+            displayframe["amp"] = displayframe["amp"] * self.amp_conversion
+            self.signals_qgrid.df = displayframe.combine_first(self.signals_qgrid.df) #Update displayed values
+            self._update_signal_markers()
         self.log("Signal {} added to model with frequency {} and amplitude {}.".format(index,freq,amp))
         self._model_current(False)
     
@@ -904,12 +910,14 @@ class Pyriod(object):
             self._update_values_from_fit(self.fit_result.params,prefixmap)
         
         self._update_lcs()
-        self._update_lc_display()
-        self._update_signal_markers()
         self.compute_pers()
-        self._update_per_plots()
-        self._mark_highest_peak()#Mark highest peak in residuals
-        self._update_fit_report()
+        
+        if self.gui:
+            self._update_lc_display()
+            self._update_signal_markers()    
+            self._update_per_plots()
+            self._mark_highest_peak()#Mark highest peak in residuals
+            self._update_fit_report()
         
         self._update_status(False)#Calculation done
         self._model_current(True)#fitvalues and stagedvalues are the same
@@ -935,7 +943,8 @@ class Pyriod(object):
             self.fitvalues.loc[prefix,'phase'] += self.tshift*self.fitvalues.loc[prefix,'freq']*self.freq_conversion
             self.fitvalues.loc[prefix,'phase'] %= 1.
         
-        self._update_freq_dropdown()
+        if self.gui:
+            self._update_freq_dropdown()
         
         #Add periods and period uncertainties
         pers = 1./self.fitvalues['freq']*self.freq_conversion #days
@@ -944,9 +953,15 @@ class Pyriod(object):
         self.fitvalues['per'] = pers
         self.fitvalues['pererr'] = pererrs
         
-        #update qgrid
-        self.signals_qgrid.df = self._convert_fitvalues_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())
-        self._update_stagedvalues_from_qgrid()
+        #update qgrid and staged values
+        if self.gui:
+            self.signals_qgrid.df = self._convert_fitvalues_to_qgrid().combine_first(self.signals_qgrid.get_changed_df())
+            self._update_stagedvalues_from_qgrid()
+        else:
+            tempdf = self.fitvalues.copy()
+            tempdf["brute"] = False
+            tempdf = tempdf.astype(dtype=dict(zip(self.columns,self.dtypes)))[self.columns]
+            self.stagedvalues = tempdf
     
     def _convert_fitvalues_to_qgrid(self):
         tempdf = self.fitvalues.copy()
@@ -964,13 +979,7 @@ class Pyriod(object):
     
     def _update_stagedvalues_from_qgrid(self):# *args
         self.stagedvalues = self._convert_qgrid_to_stagedvalues()
-        
-        #self._update_lcs()
-        #self._update_lc_display()
         self._update_signal_markers()
-        #self.compute_pers()
-        #self._update_per_plots()
-        #self._update_freq_dropdown()
         
     def _update_fit_report(self):
         if self.fit_result is None:
@@ -983,10 +992,11 @@ class Pyriod(object):
         
         and color refine fit button accordingly
         """
-        if current:
-            self._refit.button_style = ''
-        else:
-            self._refit.button_style = 'warning'
+        if self.gui:
+            if current:
+                self._refit.button_style = ''
+            else:
+                self._refit.button_style = 'warning'
         self.uptodate = current
         
     def sample_model(self,time):
@@ -1001,7 +1011,8 @@ class Pyriod(object):
     def _update_lcs(self):
         #Update time series models
         meanflux = np.mean(self.lc.flux.value[self.include])
-        self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time.value)
+        if self.gui:
+            self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time.value)
         #Observed is at all original times (apply mask before calculations)
         self.lc["model"] = meanflux + self.sample_model(self.lc.time.value)
         self.lc["resid"] = self.lc.flux.value - self.lc["model"]
@@ -1045,7 +1056,8 @@ class Pyriod(object):
             pass
         self.log("Deleted signals {}".format([sig for sig in indices]))
         self.stagedvalues = self.stagedvalues.drop(indices)
-        self.signals_qgrid.df = self.signals_qgrid.get_changed_df().drop(indices)
+        if self.gui:
+            self.signals_qgrid.df = self.signals_qgrid.get_changed_df().drop(indices)
         self._model_current(current = False) #not deleted until re-fit
     
     def _delete_selected(self, *args):
@@ -1255,44 +1267,53 @@ class Pyriod(object):
             self._update_marker(self.freqs[highestind],ydata[highestind])
         else:
             self._update_marker(event.xdata,self.interpls(event.xdata))
-            
+    
     def TimeSeries(self):
-        options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask]),self._timeseries_readme],selected_index=None)
-        options.set_title(0, 'options')
-        options.set_title(1, 'info ')
-        #readme = widgets.Accordion(children=[self._timeseries_readme])
-        savefig = HBox([self._save_tsfig,self._tsfig_file_location])
-        return VBox([self._status,self.lcfig.canvas,savefig,options])
+        if self.gui:
+            options = widgets.Accordion(children=[VBox([self._tstype,self._fold,self._fold_on,self._select_fold_freq,self._reset_mask]),self._timeseries_readme],selected_index=None)
+            options.set_title(0, 'options')
+            options.set_title(1, 'info ')
+            #readme = widgets.Accordion(children=[self._timeseries_readme])
+            savefig = HBox([self._save_tsfig,self._tsfig_file_location])
+            return VBox([self._status,self.lcfig.canvas,savefig,options])
+        else:
+            print("GUI disabled.")
        
     def Periodogram(self):
-        options = widgets.Accordion(children=[VBox([self._snaptopeak,self._show_per_markers,
-                        self._show_per_orig,self._show_per_resid,
-                        self._show_per_model]),self._periodogram_readme],selected_index=None)
-        options.set_title(0, 'options')
-        options.set_title(1, 'info ')
-        savefig = HBox([self._save_perfig,self._perfig_file_location])
-        periodogram = VBox([self._status,
-                            HBox([self._thisfreq,self._thisamp]),
-                            HBox([self._addtosol,self._refit]),
-                            self.perfig.canvas,
-                            savefig,
-                            options])
-        return periodogram
+        if self.gui:
+            options = widgets.Accordion(children=[VBox([self._snaptopeak,self._show_per_markers,
+                            self._show_per_orig,self._show_per_resid,
+                            self._show_per_model]),self._periodogram_readme],selected_index=None)
+            options.set_title(0, 'options')
+            options.set_title(1, 'info ')
+            savefig = HBox([self._save_perfig,self._perfig_file_location])
+            periodogram = VBox([self._status,
+                                HBox([self._thisfreq,self._thisamp]),
+                                HBox([self._addtosol,self._refit]),
+                                self.perfig.canvas,
+                                savefig,
+                                options])
+            return periodogram
+        else:
+            print("GUI disabled.")
         
         
     
     #This one shows all the tabs
     def Pyriod(self):
-        tstab = self.TimeSeries()
-        pertab = self.Periodogram()
-        signalstab = self.Signals()
-        logtab = self.Log()
-        tabs = widgets.Tab(children=[tstab,pertab,signalstab,logtab])
-        tabs.set_title(0, 'Time Series')
-        tabs.set_title(1, 'Periodogram')
-        tabs.set_title(2, 'Signals')
-        tabs.set_title(3, 'Log')
-        return tabs
+        if self.gui:
+            tstab = self.TimeSeries()
+            pertab = self.Periodogram()
+            signalstab = self.Signals()
+            logtab = self.Log()
+            tabs = widgets.Tab(children=[tstab,pertab,signalstab,logtab])
+            tabs.set_title(0, 'Time Series')
+            tabs.set_title(1, 'Periodogram')
+            tabs.set_title(2, 'Signals')
+            tabs.set_title(3, 'Log')
+            return tabs
+        else:
+            print("GUI disabled.")
         
     def _update_marker(self,x,y):
         try:
@@ -1321,18 +1342,24 @@ class Pyriod(object):
         self._press=False; self._move=False
 
     def Signals(self):
-        fitreport = widgets.Accordion(children=[self._fit_result_html, self._signals_readme],
-                                      selected_index=None)
-        fitreport.set_title(0, 'fit report')
-        fitreport.set_title(1, 'info ')
-        return VBox([self._status,
-                     HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
-                     self.signals_qgrid,
-                     HBox([self._save,self._load,self._signals_file_location]),
-                     fitreport])
+        if self.gui:
+            fitreport = widgets.Accordion(children=[self._fit_result_html, self._signals_readme],
+                                          selected_index=None)
+            fitreport.set_title(0, 'fit report')
+            fitreport.set_title(1, 'info ')
+            return VBox([self._status,
+                         HBox([self._refit,self._thisfreq,self._thisamp,self._addtosol,self._delete]),
+                         self.signals_qgrid,
+                         HBox([self._save,self._load,self._signals_file_location]),
+                         fitreport])
+        else:
+            print("GUI disabled.")
         
     def Log(self):
-        return self._logbox
+        if self.gui:
+            return self._logbox
+        else:
+            print("GUI disabled.")
     
     def _update_log(self):
         self._log.value = self.log_capture_string.getvalue()
@@ -1375,27 +1402,35 @@ class Pyriod(object):
         f.close()
         
     def save_tsfig(self,filename='Pyriod_TimeSeries.png',**kwargs):
-        self.lcfig.savefig(filename,**kwargs)
+        if self.gui:
+            self.lcfig.savefig(filename,**kwargs)
+        else:
+            print("Plotting disabled.")
         
     def _save_tsfig_button_click(self, *args):
         self.save_tsfig(self._tsfig_file_location.selected)
         
     def save_perfig(self,filename='Pyriod_Periodogram.png',**kwargs):
-        self.perfig.savefig(filename,**kwargs)
+        if self.gui:
+            self.perfig.savefig(filename,**kwargs)
+        else:
+            print("Plotting disabled.")
         
     def _save_perfig_button_click(self, *args):
         self.save_perfig(self._perfig_file_location.selected)
     
     def _update_status(self,calculating=True):
-        if calculating:
-            self._status.value = "<center><b><big><font color='red'>UPDATING CALCULATIONS...</big></b></center>"
-        else:
-            self._status.value = ""
+        if self.gui:
+            if calculating:
+                self._status.value = "<center><b><big><font color='red'>UPDATING CALCULATIONS...</big></b></center>"
+            else:
+                self._status.value = ""
             
     def close_figures(self):
         """Close all figures beloning to this class.
         
         Warning: interacting with figures will no longer work.
         """
-        plt.close(self.lcfig)
-        plt.close(self.perfig)
+        if self.gui:
+            plt.close(self.lcfig)
+            plt.close(self.perfig)
