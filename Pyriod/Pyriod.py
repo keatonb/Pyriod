@@ -1434,3 +1434,35 @@ class Pyriod(object):
         if self.gui:
             plt.close(self.lcfig)
             plt.close(self.perfig)
+            
+            
+    ### Advanced Features ###
+    
+    def spectral_window(self, maxfreq=100, osample=10):
+        #Compute spectral window with DFT
+        #Define the window function
+        time = self.lc.time[self.include].value
+        window = np.ones(len(time))*0.5
+        freqvec = np.arange(0,maxfreq,self.fres/osample)
+        # DFT function (stolen from Mikemon)
+        ampvec = np.zeros(len(freqvec))
+        for i,freq in enumerate(freqvec):
+            omega = 2.*np.pi*freq*self.freq_conversion
+            wts = np.sin(omega*time)
+            wtc = np.cos(omega*time)
+            camp = np.dot(wtc,window)
+            samp = np.dot(wts,window)
+            ampvec[i] = np.sqrt(camp**2 + samp**2)
+        ampvec = (2./len(time))*np.array(ampvec)
+        return freqvec,ampvec
+    
+    def plot_spectral_window(self, maxfreq=100, osample=10, ax=None, **plt_kwargs):
+         if ax is None:
+             ax = plt.gca()
+         freqvec,ampvec = self.spectral_window(maxfreq, osample)
+         ax.plot(freqvec,ampvec, **plt_kwargs)
+         ax.set_xlim(0,maxfreq)
+         ax.set_ylim(0,1)
+         ax.set_xlabel(f"frequency ({self.freq_label})")
+         ax.set_ylabel('spectral window')
+         return(ax)
