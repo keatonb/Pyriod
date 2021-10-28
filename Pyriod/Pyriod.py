@@ -181,6 +181,11 @@ class Pyriod(object):
             raise TypeError('lc must be a lightkurve.LightCurve object.')
         self.lc = lc.copy() #copy so we don't modify original
         
+        #Check for nans and remove if needed
+        if np.sum(np.isnan(self.lc.flux.value)) > 0:
+            self.log("Removing nans from light curve.")
+            self.lc = self.lc.remove_nans()
+        
         #Maintain a mask of points to exclude from analysis
         self.lc["mask"] = np.ones(len(self.lc)) # 1 = include
         self.include = np.where(self.lc["mask"])
@@ -947,7 +952,7 @@ class Pyriod(object):
             self._update_freq_dropdown()
         
         #Add periods and period uncertainties
-        pers = 1./self.fitvalues['freq']*self.freq_conversion #days
+        pers = 1./(self.fitvalues['freq']*self.freq_conversion) #days
         pers = pers*24*3600 #seconds
         pererrs = pers*self.fitvalues['freqerr']/self.fitvalues['freq']
         self.fitvalues['per'] = pers
