@@ -220,7 +220,7 @@ class Pyriod(object):
             time_samples = TimeSeries(time_start=np.min(lc.time),
                                       time_delta= dt * u.day / osample,
                                       n_samples=nsamples).time
-            initmodel = np.zeros(nsamples)+np.mean(self.lc.flux.value)
+            initmodel = np.zeros(nsamples)+np.mean(np.array(self.lc.flux.value))
             self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
             
             self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value,
@@ -1135,7 +1135,7 @@ class Pyriod(object):
             self.combo_markers.set_data(freqs[np.where(~indep)],amps[np.where(~indep)])
         else:
             self.combo_markers.set_data([],[])
-        self.perfig.canvas.draw()
+        self.perfig.canvas.draw_idle()
         
     def _display_lc(self,residuals=False):
         lc = self.lc.copy()
@@ -1160,7 +1160,7 @@ class Pyriod(object):
             tspan = np.ptp(lc.time.value)
             self.lcax.set_xlim(np.min(lc.time.value)-0.01*tspan,np.max(lc.time.value)+0.01*tspan)
         self.selector.update(self.lcplot_data)
-        self.lcfig.canvas.draw()
+        self.lcfig.canvas.draw_idle()
     
     def _mask_selected_pts(self,event):
         self.log(event.key,"debug")
@@ -1219,28 +1219,28 @@ class Pyriod(object):
         self.perplot_orig.set_ydata(self.per_orig.power.value)
         self.perplot_model.set_ydata(self.per_model.power.value)
         self.perplot_resid.set_ydata(self.per_resid.power.value)
-        self.perfig.canvas.draw()
+        self.perfig.canvas.draw_idle()
    
     def _display_per_orig(self, *args):
         if self._show_per_orig.value:
             self.perplot_orig.set_alpha(1)
         else:
             self.perplot_orig.set_alpha(0)
-        self.perfig.canvas.draw()
+        self.perfig.canvas.draw_idle()
         
     def _display_per_resid(self, *args):
         if self._show_per_resid.value:
             self.perplot_resid.set_alpha(1)
         else:
             self.perplot_resid.set_alpha(0)
-        self.perfig.canvas.draw()
+        self.perfig.canvas.draw_idle()
         
     def _display_per_model(self, *args):
         if self._show_per_model.value:
             self.perplot_model.set_alpha(1)
         else:
             self.perplot_model.set_alpha(0)
-        self.perfig.canvas.draw()
+        self.perfig.canvas.draw_idle()
         
     def _display_per_sw(self, *args):
         #if self._show_per_sw.value:
@@ -1257,7 +1257,7 @@ class Pyriod(object):
         else:
             self.signal_markers.set_alpha(0)
             self.combo_markers.set_alpha(0)
-        self.perfig.canvas.draw()
+        self.perfig.canvas.draw_idle()
     
     def _onperiodogramclick(self,event):
         if self._snaptopeak.value:
@@ -1327,7 +1327,7 @@ class Pyriod(object):
             self._thisfreq.value = str(x)
         self._thisamp.value =  y
         self.marker.set_data([x],[y])
-        self.perfig.canvas.draw()
+        self.perfig.canvas.draw_idle()
         self.perfig.canvas.flush_events()
     
     def _mark_highest_peak(self):    
