@@ -2,6 +2,8 @@
 
 Python implementation of basic period detection and fitting routines for astronomical time series.
 
+Give it a spin before you install [with Binder](dirac.us/oil).
+
 To install, use
 
 ```pip install Pyriod```
