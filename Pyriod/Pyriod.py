@@ -209,7 +209,7 @@ class Pyriod(object):
         self._calc_tshift()
         
         #Store version sampled as the data as lc column
-        initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include].value)
+        initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include])
         self.lc["model"] = initmodel
         #Also plot the model over the time series
         if self.gui:
@@ -220,7 +220,7 @@ class Pyriod(object):
             time_samples = TimeSeries(time_start=np.min(lc.time),
                                       time_delta= dt * u.day / osample,
                                       n_samples=nsamples).time
-            initmodel = np.zeros(nsamples)+np.mean(np.array(self.lc.flux.value))
+            initmodel = np.zeros(nsamples)+np.mean(np.array(self.lc.flux))
             self.lc_model_sampled = lk.LightCurve(time=time_samples,flux=initmodel)
             
             self.lcplot_model, = self.lcax.plot(self.lc_model_sampled.time.value,
@@ -228,7 +228,7 @@ class Pyriod(object):
                                                 lw=1,alpha = 0.7)
         
         #And keep track of residuals time series
-        self.lc["resid"] = self.lc["flux"].value - self.lc["model"].value
+        self.lc["resid"] = self.lc["flux"] - self.lc["model"]
         
         
         ### PERIODOGRAM ###
@@ -837,7 +837,7 @@ class Pyriod(object):
         params['freq'].set(self.freq_conversion*freq, vary=False)
         params['amp'].set(amp, vary=False) 
         params['phase'].set(0.5, vary=True, min=0, max=1, brute_step=brute_step)
-        result = model.fit(self.lc["resid"][self.include]-np.mean(self.lc["resid"][self.include]), 
+        result = model.fit(self.lc["resid"][self.include].value-np.mean(self.lc["resid"][self.include].value), 
                                params, x=(self.lc.time.value[self.include]+self.tshift), 
                                method='brute')
         return result.params['phase'].value
@@ -1019,8 +1019,8 @@ class Pyriod(object):
         if self.gui:
             self.lc_model_sampled.flux = meanflux + self.sample_model(self.lc_model_sampled.time.value)
         #Observed is at all original times (apply mask before calculations)
-        self.lc["model"] = meanflux + self.sample_model(self.lc.time.value)
-        self.lc["resid"] = self.lc.flux.value - self.lc["model"]
+        self.lc["model"] = (meanflux + self.sample_model(self.lc.time.value))*self.lc.flux.unit
+        self.lc["resid"] = self.lc.flux - self.lc["model"]
     
     def _qgrid_changed_manually(self, *args):
         #note: args has information about what changed if needed
