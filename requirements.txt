@@ -1,7 +1,7 @@
 numpy>=1.11
 pandas>=1.0
 scipy>=0.19
-astropy>=5.0
+astropy
 lightkurve>=2.0.10
 lmfit>=1.0
 bs4
