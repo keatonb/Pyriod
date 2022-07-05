@@ -1058,6 +1058,10 @@ class Pyriod(object):
             self.log("No signals to fit.", level='warning')
             self.fitvalues = self._initialize_dataframe().drop('brute', axis=1)
             self.fit_result = None  # No fit
+        elif np.all(self.stagedvalues[self.stagedvalues.include]  # All fixed
+                    [['fixfreq', 'fixamp', 'fixphase']]):
+            self.log("No signals with free parameters allowed to vary.",
+                     level='warning')
         else:  # Fit a model
             # Set up lmfit model for fitting
             signals = {}  # Empty dict to be populated
