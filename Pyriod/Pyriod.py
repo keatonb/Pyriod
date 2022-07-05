@@ -207,7 +207,8 @@ class Pyriod(object):
         self._calc_tshift()
 
         # Store version sampled as the data as lc column
-        initmodel = np.zeros(len(self.lc))+np.mean(self.lc.flux[self.include])
+        initmodel = (np.zeros(len(self.lc))*self.lc.flux.unit
+                     + np.mean(self.lc.flux[self.include]))
         self.lc["model"] = initmodel
         # Also plot the model over the time series
         if self.gui:
