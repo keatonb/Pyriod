@@ -23,6 +23,7 @@ import os
 import itertools
 import re
 import logging
+import warnings
 from pathlib import Path
 if sys.version_info < (3, 0):
     from StringIO import StringIO
@@ -39,6 +40,7 @@ from astropy.timeseries import TimeSeries
 import lightkurve as lk
 from lmfit import Model, Parameters
 from bs4 import BeautifulSoup
+from bs4.builder import XMLParsedAsHTMLWarning
 import matplotlib.pyplot as plt
 from matplotlib.widgets import LassoSelector
 import matplotlib.path  # for .Path
@@ -51,6 +53,10 @@ from ipyfilechooser import FileChooser
 # from .pyquist import subfreq (not currently used)
 
 plt.ioff()  # Turn off interactive mode
+
+# Ignore xml warning
+warnings.filterwarnings(action='ignore', category=XMLParsedAsHTMLWarning,
+                        module='bs4')
 
 
 # Definition of the basic model we fit
