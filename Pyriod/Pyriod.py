@@ -129,6 +129,13 @@ class Pyriod(object):
         freq_unit: ("muHz" or "perday")
             frequency unit to use
         gui: (bool)
+            Whether to update widget elements. The default is True.
+        use_weights: (bool)
+            Weight data points by 1/lc.flux_err (if available)? The default is
+            True.
+        rescale_covar: (bool)
+            Rescale covariance matrix when estimating uncertainties? The
+            default is False.
 
     Attributes
     ----------
@@ -146,7 +153,7 @@ class Pyriod(object):
     id_generator = itertools.count(0)
 
     def __init__(self, lc, amp_unit='ppt', freq_unit='muHz', gui=True,
-                 **kwargs):
+                 use_weights=True, rescale_covar=False, **kwargs):
         # Generate unique Pyriod instance ID
         self.id = next(self.id_generator)
         self.gui = gui
@@ -178,8 +185,28 @@ class Pyriod(object):
 
         # Check for nans and remove if needed
         if np.sum(np.isnan(np.array(self.lc.flux.value))) > 0:
-            self.log("Removing nans from light curve.")
+            self.log("Removing nans from light curve flux column.")
             self.lc = self.lc.remove_nans()
+
+        # Will we be using weights in the fitting?
+        self.use_weights = use_weights
+        # Check if uncertainties provided
+        if self.use_weights:
+            nanweights = np.isnan(lc.flux_err.value)
+            if np.all(nanweights):
+                # No uncertainties in light curve
+                self.log("No flux uncertainties provided. Data points will "
+                         "not be fit using weights.", level='warning')
+                self.use_weights = False
+            elif np.any(nanweights):
+                self.log(f"Removing {np.sum(nanweights)} nans from light curve"
+                         " flux_err column.")
+                self.lc = self.lc.remove_nans('flux_err')
+
+        # Will lmfit rescale the covariance matrix so that 1-sigma error
+        # estimates are those that increase Chi2 by reduced Chi2?
+        self.rescale_covar = rescale_covar
+        self.log(f'Rescale covar: {self.rescale_covar}')
 
         # Maintain a mask of points to exclude from analysis
         self.lc["include"] = np.ones(len(self.lc))  # 1 = include
@@ -1134,13 +1161,17 @@ class Pyriod(object):
                 [signals[prefixmap[prefix]] for prefix in
                  self.stagedvalues.index[self.stagedvalues.include]])
 
+            # What to use for weights? (stddev if not real error bars)
+            weights = 1/np.std(self.lc.resid.value[self.include])
+            if self.use_weights:
+                weights = 1/self.lc.flux_err.value[self.include]
+
             # Fit the model
             self.fit_result = model.fit(
                 (self.lc.flux.value[self.include]
                  - np.mean(self.lc.flux.value[self.include])),
                 params, x=self.lc.time.value[self.include]+self.tshift,
-                weights=1/self.lc.flux_err.value[self.include],
-                scale_covar=False)
+                weights=weights, scale_covar=self.rescale_covar)
 
             self.log("Fit refined.")
             self.log("Fit properties:"+self.fit_result.fit_report())
