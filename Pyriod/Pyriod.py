@@ -1516,6 +1516,8 @@ class Pyriod(object):
             self.tshift = -np.mean(self.lc[self.include].time.value)
         else:
             self.tshift = tshift
+        self.log(f'Fitted timstamps will be shifted by forward relative to '
+                 f'given timestamps by `tshift` {self.tshift} days.')
 
     def compute_pers(self, orig=False):
         """Compute periodograms of the various time series.
