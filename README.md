@@ -22,6 +22,11 @@ jupyter nbextension enable --py --sys-prefix qgrid
 jupyter nbextension enable --py --sys-prefix widgetsnbextension
 jupyter nbextension enable --py --sys-prefix ipympl
 ```
-Pyriod does not work in JupyterLab.
+
+Thanks to heroic work of [j123github](https://github.com/j123github), Pyriod can now be run in JupyerLab by running
+```
+jupyter labextension install @j123npm/qgrid2@1.1.4
+```
+See [quantopian/qgrid/#356](https://github.com/quantopian/qgrid/pull/356) for details.
 
 This is a serious work in progress with many planned improvements.  Please be patient, but also feel free to request new features by raising GitHub issues.
