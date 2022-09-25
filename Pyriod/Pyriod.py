@@ -276,6 +276,9 @@ class Pyriod(object):
         # Compute original periodogram
         self.compute_pers(orig=True)
 
+        # SSignificance threshold init as 0
+        self.sigthresh = None
+
         # Make interpolator for residual periodogram
         self.interpls = interp1d(self.freqs, self.per_resid.power.value)
 
@@ -468,7 +471,7 @@ class Pyriod(object):
 
         # Readme HTML widget
         path = Path(__file__).parent / 'docs/TimeSeries.md'
-        html = gh_md_to_html.main(str(path))
+        html = gh_md_to_html.main(str(path), enable_image_downloading=False)
         self._timeseries_readme = widgets.HTML(html)
 
     def _init_periodogram_widgets(self):
@@ -563,7 +566,7 @@ class Pyriod(object):
 
         # Readme HTML widget
         path = Path(__file__).parent / 'docs/Periodogram.md'
-        html = gh_md_to_html.main(str(path))
+        html = gh_md_to_html.main(str(path), enable_image_downloading=False)
         self._periodogram_readme = widgets.HTML(html)
 
     def _init_signals_qgrid(self):
@@ -664,7 +667,7 @@ class Pyriod(object):
 
         # HTML widget to display Readme
         path = Path(__file__).parent / 'docs/Signals.md'
-        html = gh_md_to_html.main(str(path))
+        html = gh_md_to_html.main(str(path), enable_image_downloading=False)
         self._signals_readme = widgets.HTML(html)
 
     def _init_log(self):
