@@ -603,13 +603,13 @@ class Pyriod(object):
         )
         # Frequency step
         self._sig_freqstep_widget = widgets.FloatText(
-            value = 100,
+            value = self.nyquist/10.0000001,
             description='Step size:',
             style={'description_width': 'initial'}
         )
         # Window width
         self._sig_winwidth_widget = widgets.FloatText(
-            value = 100,
+            value = self.nyquist/10.0000001,
             description='Window width:',
             style={'description_width': 'initial'}
         )
@@ -621,7 +621,7 @@ class Pyriod(object):
         )
         # Whether to extrapolate
         self._sig_extrapolate_widget = widgets.Checkbox(
-            value = True,
+            value = False,
             description='Extrapolate?',
             style={'description_width': 'initial'}
         )
@@ -1739,7 +1739,7 @@ class Pyriod(object):
         if endfreq is None:
             endfreq = np.max(self.freqs)
 
-        midbin = np.arange(startfreq, endfreq + freqstep, freqstep)
+        midbin = np.arange(startfreq, endfreq, freqstep)
         binstart = midbin - winwidth/2
         binend = midbin + winwidth/2
         nbins = len(midbin)
@@ -1757,8 +1757,13 @@ class Pyriod(object):
         if 'fill_value' not in kwargs.keys():
             kwargs["fill_value"] = "extrapolate"
         
-        self.noise_spectrum = interp1d(midbin, avgnoise, bounds_error=False,
-                                       **kwargs)
+        if len(avgnoise) > 1:
+            self.noise_spectrum = interp1d(midbin, avgnoise, bounds_error=False,
+                                           **kwargs)
+        elif len(avgnoise) == 1:
+            self.noise_spectrum = lambda x: avgnoise[0]
+        # todo: else more informative error
+            
         self.significance_multiplier = multiplier
 
         # Update SNR of fitted signals
