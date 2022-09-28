@@ -278,8 +278,11 @@ class Pyriod(object):
         # Compute original periodogram
         self.compute_pers(orig=True)
 
-        # SSignificance threshold init as 0
-        self.sigthresh = None
+        # Significance threshold init as None
+        # Noise spectrum interpolates average noise
+        # Significance ,ultiplier scales this up for significance threshold
+        self.noise_spectrum = None
+        self.significance_multiplier = None
 
         # Make interpolator for residual periodogram
         self.interpls = interp1d(self.freqs, self.per_resid.power.value)
@@ -1271,10 +1274,11 @@ class Pyriod(object):
 
     def _update_signal_snr(self):
         # Add periods and period uncertainties
-        if self.sigthresh is not None:
-            self.fitvalues['snr'] = (self.amp_conversion *
-                                     self.fitvalues['amp'] /
-                                     self.sigthresh(self.fitvalues['freq']))
+        if ((self.noise_spectrum is not None) & 
+            (self.significance_multiplier is not None)):
+            self.fitvalues['snr'] = (
+                self.amp_conversion * self.fitvalues['amp'] / 
+                self.noise_spectrum(self.fitvalues['freq']))
 
     def _convert_fitvalues_to_qgrid(self):
         tempdf = self.fitvalues.copy()
@@ -1646,10 +1650,11 @@ class Pyriod(object):
                                          **kwargs):
         """
         Calculate amplitude threshold for considering a signal to be
-        significant. Stores significance threshold interpolation function
-        as self.sigthresh, and the multiplier as self.sig_multiplier. The
-        significance threshold is estimated as the average (mean or median) in
-        a moving frequency window, multiplied by multiplier.
+        significant. There are two parts: self.noise_spectrum is an
+        interpolation function for the average (mean or median) amplitude
+        calculated in a moving frequency window across the residuals
+        periodogram; and self.significance_multiplier is a scaling factor for 
+        converting this to a significance threshold.
 
         Parameters
         ----------
@@ -1697,9 +1702,9 @@ class Pyriod(object):
                                             self.freqs <= binend[i]))
             avgnoise[i] = average(self.per_resid.power.value[inbin])
 
-        self.sigthresh = interp1d(midbin, avgnoise, bounds_error=False,
+        self.noise_spectrum = interp1d(midbin, avgnoise, bounds_error=False,
                                   fill_value='extrapolate', **kwargs)
-        self.sig_multiplier = multiplier
+        self.significance_multiplier = multiplier
 
         # Update SNR of fitted signals
         self._update_signal_snr()
@@ -1707,7 +1712,7 @@ class Pyriod(object):
         # update plot
         if self.gui:
             self._sig_threshold_plot.set_ydata(
-                self.sigthresh(self.freqs)*self.sig_multiplier
+                self.noise_spectrum(self.freqs)*self.significance_multiplier
                 )
             self.perfig.canvas.draw_idle()
 
