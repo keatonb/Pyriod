@@ -32,7 +32,7 @@ else:
 
 # Third party imports
 import numpy as np
-import gh_md_to_html
+#import gh_md_to_html
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
@@ -479,9 +479,9 @@ class Pyriod(object):
         self._select_fold_freq.observe(self._fold_freq_selected, 'value')
 
         # Readme HTML widget
-        path = Path(__file__).parent / 'docs/TimeSeries.md'
-        html = gh_md_to_html.main(str(path), enable_image_downloading=False)
-        self._timeseries_readme = widgets.HTML(html)
+        #path = Path(__file__).parent / 'docs/TimeSeries.md'
+        #html = gh_md_to_html.main(str(path), enable_image_downloading=False)
+        #self._timeseries_readme = widgets.HTML(html)
 
     def _init_periodogram_widgets(self):
         """Set up Periodogram widgets."""
@@ -582,10 +582,61 @@ class Pyriod(object):
         )
         self._show_sig_threshold.observe(self._display_sig_threshold)
 
+        # Widgets for computing significance threshold too!
+        # Significance multiplier
+        self._sig_multiplier_widget = widgets.FloatText(
+            value = 5.0,
+            description='Scaling factor:',
+            style={'description_width': 'initial'}
+        )
+        # Starting frequency
+        self._sig_startfreq_widget = widgets.FloatText(
+            value = 0,
+            description='Start frequency:',
+            style={'description_width': 'initial'}
+        )
+        # Ending frequency
+        self._sig_endfreq_widget = widgets.FloatText(
+            value = self.nyquist,
+            description='End frequency:',
+            style={'description_width': 'initial'}
+        )
+        # Frequency step
+        self._sig_freqstep_widget = widgets.FloatText(
+            value = 100,
+            description='Step size:',
+            style={'description_width': 'initial'}
+        )
+        # Window width
+        self._sig_winwidth_widget = widgets.FloatText(
+            value = 100,
+            description='Window width:',
+            style={'description_width': 'initial'}
+        )
+        # Type of average to take
+        self._sig_avgtype_widget = widgets.Dropdown(
+            options = ["mean","median"],
+            description='Average:',
+            style={'description_width': 'initial'}
+        )
+        # Whether to extrapolate
+        self._sig_extrapolate_widget = widgets.Checkbox(
+            value = True,
+            description='Extrapolate?',
+            style={'description_width': 'initial'}
+        )
+        # Calulate sig threshold button
+        self._sig_calculate_button = widgets.Button(
+            description='Calculate',
+            tooltip="Calculate new sigificance threshold.",
+            style={'description_width': 'initial'}
+        )
+        self._sig_calculate_button.on_click(self._sigthreshfromgui)
+
         # Readme HTML widget
-        path = Path(__file__).parent / 'docs/Periodogram.md'
-        html = gh_md_to_html.main(str(path), enable_image_downloading=False)
-        self._periodogram_readme = widgets.HTML(html)
+        #path = Path(__file__).parent / 'docs/Periodogram.md'
+        #html = gh_md_to_html.main(str(path), enable_image_downloading=False)
+        #self._periodogram_readme = widgets.HTML(html)
 
     def _init_signals_qgrid(self):
         """Define QGrid column properties."""
@@ -684,9 +735,9 @@ class Pyriod(object):
         self._fit_result_html = widgets.HTML(" ")
 
         # HTML widget to display Readme
-        path = Path(__file__).parent / 'docs/Signals.md'
-        html = gh_md_to_html.main(str(path), enable_image_downloading=False)
-        self._signals_readme = widgets.HTML(html)
+        #path = Path(__file__).parent / 'docs/Signals.md'
+        #html = gh_md_to_html.main(str(path), enable_image_downloading=False)
+        #self._signals_readme = widgets.HTML(html)
 
     def _init_log(self):
         """Set up stuff needed for the Log."""
@@ -1688,7 +1739,7 @@ class Pyriod(object):
         if endfreq is None:
             endfreq = np.max(self.freqs)
 
-        midbin = np.arange(startfreq, endfreq, freqstep)
+        midbin = np.arange(startfreq, endfreq + freqstep, freqstep)
         binstart = midbin - winwidth/2
         binend = midbin + winwidth/2
         nbins = len(midbin)
@@ -1701,9 +1752,13 @@ class Pyriod(object):
             inbin = np.where(np.logical_and(self.freqs >= binstart[i],
                                             self.freqs <= binend[i]))
             avgnoise[i] = average(self.per_resid.power.value[inbin])
-
+        
+        # Extrapolate if fill_value not specified
+        if 'fill_value' not in kwargs.keys():
+            kwargs["fill_value"] = "extrapolate"
+        
         self.noise_spectrum = interp1d(midbin, avgnoise, bounds_error=False,
-                                  fill_value='extrapolate', **kwargs)
+                                       **kwargs)
         self.significance_multiplier = multiplier
 
         # Update SNR of fitted signals
@@ -1716,6 +1771,20 @@ class Pyriod(object):
                 )
             self.perfig.canvas.draw_idle()
 
+    def _sigthreshfromgui(self, *args):
+        # Compute significance threshold from GUI widget values
+        fill_value = np.nan
+        if self._sig_extrapolate_widget.value:
+            fill_value = 'extrapolate'
+        self.calculate_significance_threshold(
+            self._sig_multiplier_widget.value,
+            self._sig_startfreq_widget.value,
+            self._sig_endfreq_widget.value,
+            self._sig_freqstep_widget.value,
+            self._sig_winwidth_widget.value,
+            self._sig_avgtype_widget.value,
+            fill_value = fill_value)
+
     def TimeSeries(self):
         """Display the interactive Time Series cell in a Jupyter notebook.
 
@@ -1727,10 +1796,8 @@ class Pyriod(object):
         if self.gui:
             options = widgets.Accordion(children=[
                 VBox([self._tstype, self._fold, self._fold_on,
-                      self._select_fold_freq, self._reset_mask]),
-                self._timeseries_readme], selected_index=None)
+                      self._select_fold_freq, self._reset_mask])], selected_index=None)
             options.set_title(0, 'options')
-            options.set_title(1, 'info ')
             savefig = HBox([self._save_tsfig, self._tsfig_file_location])
             return VBox([self._status, self.lcfig.canvas, savefig, options])
         else:
@@ -1745,21 +1812,35 @@ class Pyriod(object):
             Periodogram plot, options, and information to be displayed.
         """
         if self.gui:
-            options = widgets.Accordion(children=[
-                VBox([self._snaptopeak, self._show_per_markers,
-                      self._show_per_orig, self._show_per_resid,
-                      self._show_per_model, self._show_sig_threshold]),
-                self._periodogram_readme],
+            # display config on left, sig threshold at right
+            displayconfig = VBox([self._snaptopeak,
+                                  self._show_per_markers,
+                                  self._show_per_orig,
+                                  self._show_per_resid,
+                                  self._show_per_model,
+                                  self._show_sig_threshold])
+            thresholdconfig = VBox([widgets.Label("Significance Threshold:"),
+                                    self._sig_multiplier_widget,
+                                    self._sig_startfreq_widget,
+                                    self._sig_endfreq_widget,
+                                    self._sig_freqstep_widget,
+                                    self._sig_winwidth_widget,
+                                    self._sig_avgtype_widget,
+                                    self._sig_extrapolate_widget,
+                                    self._sig_calculate_button],
+                                   layout=widgets.Layout(border='solid 1px'))
+            options = HBox([displayconfig, thresholdconfig])
+            accordians = widgets.Accordion(
+                children=[options],
                 selected_index=None)
-            options.set_title(0, 'options')
-            options.set_title(1, 'info ')
+            accordians.set_title(0, 'options')
             savefig = HBox([self._save_perfig, self._perfig_file_location])
             periodogram = VBox([self._status,
                                 HBox([self._thisfreq, self._thisamp]),
                                 HBox([self._addtosol, self._refit]),
                                 self.perfig.canvas,
                                 savefig,
-                                options])
+                                accordians])
             return periodogram
         else:
             print("GUI disabled.")
@@ -1832,10 +1913,9 @@ class Pyriod(object):
         """
         if self.gui:
             fitreport = widgets.Accordion(
-                children=[self._fit_result_html, self._signals_readme],
+                children=[self._fit_result_html],
                 selected_index=None)
             fitreport.set_title(0, 'fit report')
-            fitreport.set_title(1, 'info ')
             return VBox([self._status,
                          HBox([self._refit, self._thisfreq, self._thisamp,
                                self._addtosol, self._delete]),
