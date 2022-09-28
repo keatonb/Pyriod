@@ -246,6 +246,8 @@ class Pyriod(object):
         # Also plot the model over the time series
         if self.gui:
             dt = np.min(np.diff(sorted(lc.time.value)))
+            if dt == 0:
+                dt = 1. / (24*3600)  # 1s
             tspan = (np.max(lc.time.value) - np.min(lc.time.value))
             osample = 2
             nsamples = int(round(osample*tspan/dt))
@@ -304,6 +306,10 @@ class Pyriod(object):
             self.perplot_resid, = self.perax.plot(self.freqs,
                                                   self.per_resid.power.value,
                                                   lw=1, c='tab:blue')
+            # Plot significance threshold (placeholder until calculated)
+            self._sig_threshold_plot, = self.perax.plot(self.freqs,
+                                                        self.freqs*np.nan,
+                                                        lw=1, c='red', ls='--')
 
             # Create markers for selected peak, adopted signals
             self.marker = self.perax.plot([0], [0], c='k', marker='o')[0]
@@ -563,6 +569,15 @@ class Pyriod(object):
             style={'description_width': 'initial'}
         )
         self._show_per_model.observe(self._display_per_model)
+
+        # Checkboxes, show significance threshold
+        self._show_sig_threshold = widgets.Checkbox(
+            value=True,
+            description='Sig Threshold',
+            disabled=False,
+            style={'description_width': 'initial'}
+        )
+        self._show_sig_threshold.observe(self._display_sig_threshold)
 
         # Readme HTML widget
         path = Path(__file__).parent / 'docs/Periodogram.md'
@@ -1238,6 +1253,9 @@ class Pyriod(object):
         self.fitvalues['per'] = pers
         self.fitvalues['pererr'] = pererrs
 
+        # Add SNRs too:
+        self._update_signal_snr()
+
         # Update qgrid and staged values
         if self.gui:
             self.signals_qgrid.df = (
@@ -1250,6 +1268,13 @@ class Pyriod(object):
             tempdf = tempdf.astype(
                 dtype=dict(zip(self.columns, self.dtypes)))[self.columns]
             self.stagedvalues = tempdf
+
+    def _update_signal_snr(self):
+        # Add periods and period uncertainties
+        if self.sigthresh is not None:
+            self.fitvalues['snr'] = (self.amp_conversion *
+                                     self.fitvalues['amp'] /
+                                     self.sigthresh(self.fitvalues['freq']))
 
     def _convert_fitvalues_to_qgrid(self):
         tempdf = self.fitvalues.copy()
@@ -1585,6 +1610,13 @@ class Pyriod(object):
             self.perplot_model.set_alpha(0)
         self.perfig.canvas.draw_idle()
 
+    def _display_sig_threshold(self, *args):
+        if self._show_sig_threshold.value:
+            self._sig_threshold_plot.set_alpha(1)
+        else:
+            self._sig_threshold_plot.set_alpha(0)
+        self.perfig.canvas.draw_idle()
+
     def _display_per_markers(self, *args):
         if self._show_per_markers.value:
             self.signal_markers.set_alpha(1)
@@ -1607,6 +1639,77 @@ class Pyriod(object):
             self._update_marker(self.freqs[highestind], ydata[highestind])
         else:
             self._update_marker(event.xdata, self.interpls(event.xdata))
+
+    def calculate_significance_threshold(self, multiplier=5, startfreq=0,
+                                         endfreq=None, freqstep=100,
+                                         winwidth=100, avgtype="mean",
+                                         **kwargs):
+        """
+        Calculate amplitude threshold for considering a signal to be
+        significant. Stores significance threshold interpolation function
+        as self.sigthresh, and the multiplier as self.sig_multiplier. The
+        significance threshold is estimated as the average (mean or median) in
+        a moving frequency window, multiplied by multiplier.
+
+        Parameters
+        ----------
+        multiplier : float, optional
+            Factor above local average to multiply significance threshold by.
+            The default is 5.
+        startfreq : float, optional
+            Lowest frequency to start calculation. The default is 0. The first
+            averaging window will be centered on this frequency.
+        endfreq : float, optional
+            Highest frequency for calculating significance threshold. The last
+            averaging window will be centered on this frequency. The default is
+            None, corresponding to the highest frequency in the periodogram.
+        freqstep : float, optional
+            Window step size in frequency units. The default is 100.
+        winwidth : float, optional
+            Width of averaging window in frequency units. The default is 100.
+        avgtype : str, optional
+            "mean" or "median". The default is "mean".
+        **kwargs :
+            keyword arguments passed to interpolate function. `fill_value`
+            determines how or whether to extrapolate beyond sampled frequency
+            range.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        if endfreq is None:
+            endfreq = np.max(self.freqs)
+
+        midbin = np.arange(startfreq, endfreq, freqstep)
+        binstart = midbin - winwidth/2
+        binend = midbin + winwidth/2
+        nbins = len(midbin)
+
+        avgnoise = np.zeros(nbins) + np.nan
+
+        average = {"mean": np.nanmean, "median": np.nanmedian}[avgtype]
+
+        for i in range(nbins):
+            inbin = np.where(np.logical_and(self.freqs >= binstart[i],
+                                            self.freqs <= binend[i]))
+            avgnoise[i] = average(self.per_resid.power.value[inbin])
+
+        self.sigthresh = interp1d(midbin, avgnoise, bounds_error=False,
+                                  fill_value='extrapolate', **kwargs)
+        self.sig_multiplier = multiplier
+
+        # Update SNR of fitted signals
+        self._update_signal_snr()
+
+        # update plot
+        if self.gui:
+            self._sig_threshold_plot.set_ydata(
+                self.sigthresh(self.freqs)*self.sig_multiplier
+                )
+            self.perfig.canvas.draw_idle()
 
     def TimeSeries(self):
         """Display the interactive Time Series cell in a Jupyter notebook.
@@ -1640,7 +1743,8 @@ class Pyriod(object):
             options = widgets.Accordion(children=[
                 VBox([self._snaptopeak, self._show_per_markers,
                       self._show_per_orig, self._show_per_resid,
-                      self._show_per_model]), self._periodogram_readme],
+                      self._show_per_model, self._show_sig_threshold]),
+                self._periodogram_readme],
                 selected_index=None)
             options.set_title(0, 'options')
             options.set_title(1, 'info ')
