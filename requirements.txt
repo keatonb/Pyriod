@@ -4,7 +4,7 @@ scipy>=0.19
 astropy
 lightkurve>=2.1.1
 lmfit>=1.0
-bs4
+beautifulsoup4>=4.11
 matplotlib>=3.4
 ipympl>=0.7
 ipywidgets>=7.5, <8.0
