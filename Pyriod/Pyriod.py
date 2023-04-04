@@ -741,7 +741,7 @@ class Pyriod(object):
 
     def _init_log(self):
         """Set up stuff needed for the Log."""
-        self.logger = logging.getLogger('basic_logger')
+        self.logger = logging.getLogger(f'Pyriod Logger {self.id}')
         self.logger.setLevel(logging.DEBUG)
         self.log_capture_string = StringIO()
         ch = logging.StreamHandler(self.log_capture_string)
