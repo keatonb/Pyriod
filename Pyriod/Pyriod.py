@@ -1325,10 +1325,10 @@ class Pyriod(object):
 
     def _update_signal_snr(self):
         # Add periods and period uncertainties
-        if ((self.noise_spectrum is not None) & 
+        if ((self.noise_spectrum is not None) &
             (self.significance_multiplier is not None)):
             self.fitvalues['snr'] = (
-                self.amp_conversion * self.fitvalues['amp'] / 
+                self.amp_conversion * self.fitvalues['amp'] /
                 self.noise_spectrum(self.fitvalues['freq']))
 
     def _convert_fitvalues_to_qgrid(self):
@@ -1569,7 +1569,6 @@ class Pyriod(object):
         self.lcfig.canvas.draw_idle()
 
     def _mask_selected_pts(self, event):
-        self.log(event.key, "debug")
         if ((event.key in ["backspace", "delete"]) and (len(self.selector.ind) > 0)):
             self.log("Masking {} selected points.")
             self.lc["include"][self.selector.ind] = 0
@@ -1686,7 +1685,7 @@ class Pyriod(object):
             # Click within either frequency resolution or 1% of displayed range
             # TODO: make this work with log frequency too
             tolerance = np.max([self.fres,
-                                0.01*np.diff(self.perax.get_xlim())])
+                                0.01*np.diff(self.perax.get_xlim())[0]])
             nearby = np.argwhere((self.freqs >= event.xdata - tolerance) &
                                  (self.freqs <= event.xdata + tolerance))
             ydata = self.perplot_resid.get_ydata()
@@ -1704,7 +1703,7 @@ class Pyriod(object):
         significant. There are two parts: self.noise_spectrum is an
         interpolation function for the average (mean or median) amplitude
         calculated in a moving frequency window across the residuals
-        periodogram; and self.significance_multiplier is a scaling factor for 
+        periodogram; and self.significance_multiplier is a scaling factor for
         converting this to a significance threshold.
 
         Parameters
@@ -1752,18 +1751,18 @@ class Pyriod(object):
             inbin = np.where(np.logical_and(self.freqs >= binstart[i],
                                             self.freqs <= binend[i]))
             avgnoise[i] = average(self.per_resid.power.value[inbin])
-        
+
         # Extrapolate if fill_value not specified
         if 'fill_value' not in kwargs.keys():
             kwargs["fill_value"] = "extrapolate"
-        
+
         if len(avgnoise) > 1:
             self.noise_spectrum = interp1d(midbin, avgnoise, bounds_error=False,
                                            **kwargs)
         elif len(avgnoise) == 1:
             self.noise_spectrum = lambda x: avgnoise[0]
         # todo: else more informative error
-            
+
         self.significance_multiplier = multiplier
 
         # Update SNR of fitted signals
