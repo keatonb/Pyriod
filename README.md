@@ -19,7 +19,7 @@ Additional documentation is available at [pyriod.readthedocs.io](https://pyriod.
 This code uses [Qgrid](https://github.com/quantopian/qgrid) and other Jupyter widgets to interactively display the frequency solution.  
 Unfortunately Qgrid is no longer supported. [A version that works with other modern packages](https://anaconda.org/eshard/qgrid) can be installed with 
 
-```conda install -c  qgrid```
+```conda install -c eshard qgrid```
 
 
 To display the Pyriod GUI, you will need to first enable the following Jupyter notebook extensions in the terminal:
