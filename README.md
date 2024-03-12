@@ -21,6 +21,11 @@ Unfortunately Qgrid is no longer supported. [A version that works with other mod
 
 ```conda install -c eshard qgrid```
 
+Furthermore, Qgrid has specific version requirements for Jupyter (classic only, < v7) and `ipywidgets` (< v8):
+```
+conda install "notebook<7"
+conda install "ipywidgets<8"
+```
 
 To display the Pyriod GUI, you will need to first enable the following Jupyter notebook extensions in the terminal:
 ```
