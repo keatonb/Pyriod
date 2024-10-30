@@ -46,7 +46,7 @@ from matplotlib.widgets import LassoSelector
 import matplotlib.path  # for .Path
 import ipywidgets as widgets
 from ipywidgets import HBox, VBox
-import qgrid
+import qgridnext as qgrid
 from ipyfilechooser import FileChooser
 
 # Local imports
@@ -229,7 +229,7 @@ class Pyriod(object):
             self.lcax.set_position([0.13, 0.22, 0.85, 0.76])
             self._lc_colors = {0: "bisque", 1: "C0"}
             self.lcplot_data = self.lcax.scatter(
-                self.lc.time.value, self.lc.flux.value, marker='o',
+                self.lc.time.value, np.array(self.lc.flux.value), marker='o',
                 s=5, ec='None', lw=1, c=self._lc_colors[1])
             # Define selector for masking points
             self.selector = lasso_selector(self.lcax, self.lcplot_data)
@@ -1242,12 +1242,12 @@ class Pyriod(object):
             # What to use for weights? (stddev if not real error bars)
             weights = 1/np.std(self.lc.resid.value[self.include])
             if self.use_weights:
-                weights = 1/self.lc.flux_err.value[self.include]
+                weights = 1/np.array(self.lc.flux_err.value[self.include])
 
             # Fit the model
+            fluxarray= np.array(self.lc.flux.value[self.include])
             self.fit_result = model.fit(
-                (self.lc.flux.value[self.include]
-                 - np.mean(self.lc.flux.value[self.include])),
+                fluxarray - np.mean(fluxarray),
                 params, x=self.lc.time.value[self.include]+self.tshift,
                 weights=weights, scale_covar=self.rescale_covar)
 
@@ -1392,7 +1392,7 @@ class Pyriod(object):
 
     def _update_lcs(self):
         """Update sampled models and residuals time series."""
-        meanflux = float(np.mean(self.lc.flux.value[self.include]))
+        meanflux = float(np.mean(np.array(self.lc.flux.value[self.include])))
         if self.gui:  # Sampled model
             self.lc_model_sampled.flux = (
                 meanflux + self.sample_model(self.lc_model_sampled.time.value))

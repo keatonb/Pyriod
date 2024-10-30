@@ -8,7 +8,7 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="Pyriod",
-    version="0.2.6",
+    version="0.3.0",
     author="Keaton Bell",
     author_email="keatonbell@utexas.edu",
     description="Basic period detection and fitting routines for astronomical time series.",
@@ -27,4 +27,3 @@ setuptools.setup(
     include_package_data=True,
 )
 
-print("IMPORTANT: install qgrid from https://anaconda.org/eshard/qgrid for Pyriod to work with modern environments.")

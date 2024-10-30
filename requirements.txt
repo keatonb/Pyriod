@@ -8,5 +8,5 @@ beautifulsoup4>=4.11
 matplotlib>=3.4
 ipympl>=0.7
 ipywidgets>=8
-qgrid>=1.3.1
+qgridnext>1.3.1
 ipyfilechooser>=0.3.5
