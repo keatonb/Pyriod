@@ -1,4 +1,0 @@
-jupyter contrib nbextension install --user
-jupyter nbextension enable --py --sys-prefix qgrid
-jupyter nbextension enable --py --sys-prefix widgetsnbextension
-jupyter nbextension enable --py --sys-prefix ipympl
