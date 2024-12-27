@@ -2,7 +2,7 @@
 
 Python implementation of basic period detection and fitting routines for astronomical time series.
 
-<!---Give it a spin before you install [with Binder](https://mybinder.org/v2/gh/keatonb/Pyriod/HEAD?filepath=examples%2FTSC2_Demo.ipynb).--->
+Give it a spin before you install with an example notebook [on Binder](https://mybinder.org/v2/gh/keatonb/Pyriod/HEAD?filepath=examples%2FTSC2_Demo.ipynb). (This can take a while to load!)
 
 To install, use
 
