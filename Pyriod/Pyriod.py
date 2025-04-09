@@ -245,8 +245,11 @@ class Pyriod(object):
         self.lc["model"] = initmodel
         # Also plot the model over the time series
         if self.gui:
-            dt = np.min(np.diff(sorted(lc.time.value)))
-            if dt == 0:
+            # Sample the model a bit more finely than the data and through gaps
+            # This can be a problematic amount of sampling through large gaps!
+            # Base the sampling on the highest frequency sampled in the periodogram.
+            dt = 0.5*self.freq_conversion/(np.max(self.freqs))
+            if (dt == 0) or ~np.isfinite(dt):
                 dt = 1. / (24*3600)  # 1s
             tspan = (np.max(lc.time.value) - np.min(lc.time.value))
             osample = 2
@@ -2137,3 +2140,22 @@ class Pyriod(object):
         ax.set_xlabel(f"frequency ({self.freq_label})")
         ax.set_ylabel('spectral window')
         return(ax)
+
+
+data = np.loadtxt("/Users/keatonb/github/Pyriod/testing_dev/chimera_gr_combined_4nights.lc")
+ofactor = 20
+fnyq = 0.003
+fres = 1./ np.ptp(data[:,0])
+freq = np.arange(fres/ofactor, fnyq+fres/ofactor, fres/ofactor)
+lc = lk.LightCurve(
+    time = data[:,0] / 86400,
+    flux = data[:,1],
+    flux_err = data[:,2]
+)
+
+pyriod = Pyriod(
+    lc, 
+    amp_unit='ppt', 
+    freq_unit='muHz',
+    frequency=freq*1e6
+)
