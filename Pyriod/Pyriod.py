@@ -2140,22 +2140,3 @@ class Pyriod(object):
         ax.set_xlabel(f"frequency ({self.freq_label})")
         ax.set_ylabel('spectral window')
         return(ax)
-
-
-data = np.loadtxt("/Users/keatonb/github/Pyriod/testing_dev/chimera_gr_combined_4nights.lc")
-ofactor = 20
-fnyq = 0.003
-fres = 1./ np.ptp(data[:,0])
-freq = np.arange(fres/ofactor, fnyq+fres/ofactor, fres/ofactor)
-lc = lk.LightCurve(
-    time = data[:,0] / 86400,
-    flux = data[:,1],
-    flux_err = data[:,2]
-)
-
-pyriod = Pyriod(
-    lc, 
-    amp_unit='ppt', 
-    freq_unit='muHz',
-    frequency=freq*1e6
-)
