@@ -8,7 +8,7 @@ The interactive GUI runs in a Jupyter Notebook (not compatible with JupyterLab).
 
 This is a work in progress with many planned improvements. Please be patient, but also feel free to request new features on the issues page on [GitHub](https://github.com/keatonb/Pyriod/issues).
 
-Pyriod is written and maintained by [Keaton Bell](http://staff.washington.edu/keatonb/).
+Pyriod is written and maintained by [Keaton Bell](https://keaton.commons.gc.cuny.edu/).
 
 ## Installation
 
