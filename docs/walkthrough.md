@@ -50,7 +50,7 @@ Signals can also be added to the model at numerically specified frequencies. Typ
 
 Expand the options dropdown to choose what to display in the plot, or to calculate a significance threshold. A significance threshold is calculated by computing the average (either mean or median) amplitude across the residuals periodogram in a sliding window of width "window width" moving in steps of "step size" (frequency units). Depending on you data set and problem at hand, you may choose to identify statistically significant signals as those above some "scaling factor" greater than the average local periodogram amplitudes. You may wish to update this threshold throughout the prewhitening process.
 
-![Screenshot](img/Periodogram.png)i
+![Screenshot](img/Periodogram.png)
 
 ## Signals cell
 
