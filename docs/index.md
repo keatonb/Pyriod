@@ -1,14 +1,16 @@
 # Pyriod
 
-Python implementation of basic period detection and fitting routines for astronomical time series.  
+Python implementation of basic pre-whitening period detection and fitting routines for astronomical time series data.  
 
-Pyriod aims to eventually provide most of the functionality of the wonderful program [Period04](https://www.univie.ac.at/tops/Period04/) in the Python environment for the modern astronomy workflow, as well as other useful features.
+Pyriod aims to provide most of the functionality of the wonderful program [Period04](https://www.period04.net/) in the Python environment for the modern astronomy workflow.
 
-The interactive GUI runs in a Jupyter Notebook (not compatible with JupyterLab).
+The interactive GUI runs in a Jupyter Notebook environment.
 
-This is a work in progress with many planned improvements. Please be patient, but also feel free to request new features on the issues page on [GitHub](https://github.com/keatonb/Pyriod/issues).
+Please report any new bugs or request new features on the issues page on [GitHub](https://github.com/keatonb/Pyriod/issues).
 
 Pyriod is written and maintained by [Keaton Bell](https://keaton.commons.gc.cuny.edu/).
+
+Additional documentation and tutorials are under development.
 
 ## Installation
 
@@ -20,21 +22,18 @@ or download the latest (possibly unstable) version from [GitHub](https://github.
 
 ```python setup.py install```.
 
-This code uses [Qgrid](https://github.com/quantopian/qgrid) to interactively display the frequency solution. 
-
-To display the widgets as part of the Pyriod GUI, you will need to enable the following Jupyter notebook extensions in the terminal before starting your Jupyter server:
-```
-jupyter nbextension enable --py --sys-prefix qgrid
-jupyter nbextension enable --py --sys-prefix widgetsnbextension
-jupyter nbextension enable --py --sys-prefix ipympl
-```
-
 ## Dependencies
 
 Pyriod requires Python 3.
 
-You can view a list of package requirements [here](https://github.com/keatonb/Pyriod/blob/master/requirements.txt). Beyond more standard packages of astronomy research and plotting (Astropy, Pandas, ipywidgets, etc.), these few specific projects really made Pyriod possible, and are worth looking into if you want to understand or extend the code:
+You can view a list of package requirements [here](https://github.com/keatonb/Pyriod/blob/master/requirements.txt). Beyond fairly standard packages of astronomy research and plotting (Astropy, Pandas, ipywidgets, etc.), these few specific projects really made Pyriod possible, and are worth looking into if you want to understand or extend the code:
 
  * [lightkurve](https://docs.lightkurve.org/) -- A friendly package for Kepler & TESS time series analysis in Python.
  * [Lmfit](https://lmfit.github.io/lmfit-py/) -- Non-linear least-squares minimization and curve-fitting for Python.
- * [qgrid](https://github.com/quantopian/qgrid) -- An interactive grid for sorting, filtering, and editing DataFrames in Jupyter notebooks.
+ * [qgrid](https://github.com/quantopian/qgrid) -- An interactive grid for sorting, filtering, and editing DataFrames in Jupyter notebooks. Huge thanks to [qgridnext](https://github.com/zhihanyue/qgridnext/) for keeping the functionality alive and compatible with modern python/dependencies.
+
+## Acknowledgement
+
+This material is based upon work supported by the National
+Science Foundation under Grant No. AST-2406917.
+
