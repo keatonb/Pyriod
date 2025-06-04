@@ -61,7 +61,7 @@ warnings.filterwarnings(action='ignore', category=XMLParsedAsHTMLWarning,
 
 # Definition of the basic model we fit
 def sin(x, freq, amp, phase):
-    """Model fit to time series."""
+    """Sinusoidal time series model."""
     return amp*np.sin(2.*np.pi*(freq*x+phase))
 
 
@@ -86,7 +86,7 @@ class Capturing(list):
 class lasso_selector(object):
     """Select indices from a matplotlib collection using `LassoSelector`.
 
-    Outline selected points with given color, otherwise don't outline
+    Highlight selected points with gold outline.
 
     Based on Lasso Selector Demo
     https://matplotlib.org/3.1.1/gallery/widgets/lasso_selector_demo_sgskip.html
@@ -278,6 +278,10 @@ class Pyriod(object):
         # Display toggle widget _perplot_orig_display
         # TODO: Add color picker _perplot_orig_color
 
+        # If gui, set up widgets (need checkbox for recalculating periodogram)
+        if self.gui:
+            self._init_periodogram_widgets()
+        
         # Compute original periodogram
         self.compute_pers(orig=True)
 
@@ -290,10 +294,8 @@ class Pyriod(object):
         # Make interpolator for residual periodogram
         self.interpls = interp1d(self.freqs, self.per_resid.power.value)
 
-        # Initialize widgets and plot
+        # Initialize periodogram plot
         if self.gui:
-            self._init_periodogram_widgets()
-
             # Set up figs/axes for periodogram plots
             self.perfig, self.perax = plt.subplots(
                 figsize=(7, 3), num='Periodogram ({:d})'.format(self.id))
@@ -625,8 +627,15 @@ class Pyriod(object):
         # Whether to extrapolate
         self._sig_extrapolate_widget = widgets.Checkbox(
             value = False,
-            description='Extrapolate?',
+            description='Extrapolate',
             style={'description_width': 'initial'}
+        )
+        # Automatically recalculate sig threshold?
+        self._sig_auto_recalculate = widgets.Checkbox(
+            value = False,
+            description='Auto-recalculate',
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='100%')
         )
         # Calulate sig threshold button
         self._sig_calculate_button = widgets.Button(
@@ -1040,7 +1049,7 @@ class Pyriod(object):
 
     def _valid_combo(self, combostr):
         """Check that provided combination string is a valid expression."""
-        parts = re.split('\+|\-|\*|\/', combostr.replace(" ", "").lower())
+        parts = re.split(r'\+|\-|\*|\/', combostr.replace(" ", "").lower())
         allvalid = np.all([(part in self.stagedvalues.index)
                            or part.replace('.', '', 1).isdigit()
                            for part in parts])
@@ -1095,11 +1104,11 @@ class Pyriod(object):
         for i in range(len(combostr)):
             combostr[i] = combostr[i].replace(" ", "").lower()
             # Evaluate combostring, replacing keys with values.
-            parts = re.split('\+|\-|\*|\/',
+            parts = re.split(r'\+|\-|\*|\/',
                              combostr[i].replace(" ", "").lower())
             keys = set([part for part in parts if part
                         in self.stagedvalues.index])
-            exploded = re.split('(\+|\-|\*|\/)',
+            exploded = re.split(r'(\+|\-|\*|\/)',
                                 combostr[i].replace(" ", "").lower())
             expression = "".join([str(self.stagedvalues.loc[val, 'freq'])
                                   if val in keys else val for val in exploded])
@@ -1213,10 +1222,10 @@ class Pyriod(object):
                     useprefix = 'c{}'.format(cnum)
                     signals[useprefix] = Model(sin, prefix=useprefix)
                     params.update(signals[useprefix].make_params())
-                    parts = re.split('\+|\-|\*|\/', prefix)
+                    parts = re.split(r'\+|\-|\*|\/', prefix)
                     keys = set([part for part in parts
                                 if part in self.stagedvalues.index])
-                    exploded = re.split('(\+|\-|\*|\/)', prefix)
+                    exploded = re.split(r'(\+|\-|\*|\/)', prefix)
                     expression = "".join([val+'freq' if val in keys else val
                                           for val in exploded])
                     params[useprefix+'freq'].set(expr=expression)
@@ -1638,6 +1647,10 @@ class Pyriod(object):
                                  bounds_error=False,
                                  fill_value=self.per_resid.max_power.value)
         self._log_per_properties()
+        # If auto-recalculate set for significance threshold:
+        if self.gui:
+            if self._sig_auto_recalculate.value:
+                self._sigthreshfromgui()
         self._update_status(False)  # Calculation complete
 
     def _update_per_plots(self):
@@ -1833,7 +1846,7 @@ class Pyriod(object):
                                     self._sig_freqstep_widget,
                                     self._sig_winwidth_widget,
                                     self._sig_avgtype_widget,
-                                    self._sig_extrapolate_widget,
+                                    HBox([self._sig_extrapolate_widget,self._sig_auto_recalculate]),
                                     self._sig_calculate_button],
                                    layout=widgets.Layout(border='solid 1px'))
             options = HBox([displayconfig, thresholdconfig])
