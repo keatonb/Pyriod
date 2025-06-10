@@ -1498,7 +1498,7 @@ class Pyriod(object):
     def _update_freq_dropdown(self):
         # Add new frequencies to dropdown options
         labels = [self.fitvalues.index[i]
-                  + ': {:.8f} '.format(self.fitvalues.freq[i])
+                  + ': {:.8f} '.format(self.fitvalues.freq.iloc[i])
                   + self.per_orig.frequency.unit.to_string()
                   for i in range(len(self.fitvalues))]
         currentind = self._select_fold_freq.index
