@@ -142,6 +142,26 @@ class Pyriod(object):
         rescale_covar: (bool)
             Rescale covariance matrix when estimating uncertainties? The
             default is False.
+        **kwargs are passed to set_frequency_sampling() method, which takes arguments
+        ----------
+            frequency : array, optional
+                Explicit set of frequencies to compute periodogram at. The default
+                is None.
+            oversample_factor : FLOAT, optional
+                How many times more densely than the natural frequency resolution
+                of 1/duration to sample frequencies. The default is 5.
+            nyquist_factor : FLOAT, optional
+                How many time beyond the approximate Nyquist frequency to sample
+                periodograms. The default is 1. Overridden by maxfreq, if provided.
+                Note that the Nyquist frequency is estimated to equal 1/(2*dt),
+                where dt is the median time separation between adjacent samples.
+                This is only valid for evenly sampled data, and may be a very poor
+                approximation for unevenly sampled data.
+            minfreq : FLOAT
+                Minimum frequency of range to use. The default is 1/duration.
+            maxfreq : FLOAT
+                Maximum frequency of range to use. The default is based off of
+                nyquist_factor.
 
     Attributes
     ----------
@@ -1205,7 +1225,7 @@ class Pyriod(object):
                     # Correct phase for tdiff
                     thisphase = (self.stagedvalues.phase[prefix]
                                  - (self.tshift * self.freq_conversion
-                                    * self.stagedvalues.freq[prefix]))
+                                    * self.stagedvalues.freq[prefix])) % 1
 
                     # Estimate phase for new signals with _brute_phase_est
                     # (or those with brute = True)
@@ -1235,7 +1255,7 @@ class Pyriod(object):
                     # Correct phase for tdiff
                     thisphase = (self.stagedvalues.phase[prefix]
                                  - (self.tshift * self.freq_conversion
-                                    * self.stagedvalues.freq[prefix]))
+                                    * self.stagedvalues.freq[prefix])) % 1
                     if np.isnan(thisphase):  # If new signal to fit
                         thisphase = self._brute_phase_est(
                             self.stagedvalues.freq[prefix],
