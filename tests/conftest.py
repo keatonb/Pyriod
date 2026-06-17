@@ -8,7 +8,7 @@ import pytest
 def synthetic_lc():
     rng = np.random.default_rng(123)
 
-    time = np.linspace(0, 10, 2000) + 1000
+    time = np.linspace(0, 10, 2000)
     freq = 5.0       # 1/day
     amp = 0.003      # relative flux
     phase = 0.17
