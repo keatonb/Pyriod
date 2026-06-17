@@ -24,6 +24,7 @@ import itertools
 import re
 import logging
 import warnings
+import html
 from pathlib import Path
 if sys.version_info < (3, 0):
     from StringIO import StringIO
@@ -790,7 +791,11 @@ class Pyriod(object):
                 value='Log',
                 placeholder='Log',
                 description='Log:',
-                layout={'height': '250px', 'width': '950px'}
+                layout={
+                    'height': '250px',
+                    'width': '950px',
+                    'overflow_y': 'auto'
+                }
             )
 
             # Save log location file chooser
@@ -853,7 +858,9 @@ class Pyriod(object):
             'error': self.logger.error,
             'critical': self.logger.critical
             }
-        logdict[level](message+'<br>')
+        if message[:-2] != '\n':
+            message += '\n'
+        logdict[level](message)
         if self.gui:
             self._update_log()
 
@@ -1451,25 +1458,24 @@ class Pyriod(object):
         # Note: args has information about what changed if needed
         newdf = self.signals_qgrid.get_changed_df()
         olddf = self.signals_qgrid.df
+
         logmessage = "Signals table changed manually.\n"
-        changedcols = []
+
         for key in newdf.index.values:
-            if key in olddf.index.values:
+            if key in olddf.index.values: # modified exitsting row
                 changes = newdf.loc[key][(olddf.loc[key] != newdf.loc[key])]
                 changes = changes.dropna()  # Remove nans
                 if len(changes) > 0:
-                    logmessage += "Values changed for {}:\n".format(key)
-                for change in changes.index:
-                    logmessage += " - {} -> {}\n".format(change,
-                                                         changes[change])
-                    changedcols.append(change)
-            else:
-                logmessage += "New row in solution table: {}\n".format(key)
-                for col in newdf.loc[key]:
-                    logmessage += " - {} -> {}\n".format(change,
-                                                         changes[change])
-        self.log(logmessage)
+                    logmessage += f"Values changed for {key}:\n"
+                    for colname, new_value in changes.items():
+                        old_value = olddf.loc[key, colname]
+                        logmessage += f" - {colname}: {old_value} -> {new_value}\n"
+            else: #New row
+                logmessage += f"New row in solution table: {key}\n"
+                for colname, new_value in newdf.loc[key].items():
+                    logmessage += f" - {colname} -> {new_value}\n"
 
+        self.log(logmessage)
         # Update plots only if signal values (not what is fixed) changed
         self._update_stagedvalues_from_qgrid()
 
@@ -1497,7 +1503,7 @@ class Pyriod(object):
         -------
         None.
         """
-        
+
         # Accept a single string, a pandas Index, list, tuple, or ndarray.
         if isinstance(indices, str):
             indices = [indices]
@@ -1633,7 +1639,7 @@ class Pyriod(object):
 
     def _mask_selected_pts(self, event):
         if ((event.key in ["backspace", "delete"]) and (len(self.selector.ind) > 0)):
-            self.log("Masking {} selected points.")
+            self.log(f"Masking {len(self.selector.ind)} selected points.")
             self.lc["include"][self.selector.ind] = 0
             self._mask_changed()
 
@@ -1661,7 +1667,7 @@ class Pyriod(object):
             self.tshift = -np.mean(self.lc[self.include].time.value)
         else:
             self.tshift = tshift
-        self.log(f'Fitted timstamps will be shifted by forward relative to '
+        self.log(f'Fitted timstamps will be shifted forward relative to '
                  f'given timestamps by `tshift` {self.tshift} days.')
 
     def compute_pers(self, orig=False):
@@ -2011,7 +2017,14 @@ class Pyriod(object):
             print("GUI disabled.")
 
     def _update_log(self):
-        self._log.value = self.log_capture_string.getvalue()
+        raw_log = self.log_capture_string.getvalue()
+        self._log.value = (
+            "<pre style='white-space: pre-wrap; "
+            "font-family: monospace; "
+            "margin: 0;'>"
+            f"{html.escape(raw_log)}"
+            "</pre>"
+        )
 
     def save_solution(self, filename='Pyriod_solution.csv'):
         """Save current signal solution as csv file.
@@ -2042,14 +2055,13 @@ class Pyriod(object):
             loaddf = pd.read_csv(filename, index_col='label')
             loaddf.index = loaddf.index.rename(None)
             logmessage = ("Loading signal solution from "
-                          + os.path.abspath(filename) + ".<br />")
-            logmessage += loaddf.to_string().replace('\n', '<br />')
+                          + os.path.abspath(filename) + ".\n")
             self.log(logmessage)
             self.signals_qgrid.df = loaddf
             self._update_stagedvalues_from_qgrid()
         else:
             self.log("Failed to load " + os.path.abspath(filename)
-                     + ". File not found.<br />", level='error')
+                     + ". File not found.\n", level='error')
 
     def _load_button_click(self, *args):
         self.load_solution(filename=self._signals_file_location.selected)
