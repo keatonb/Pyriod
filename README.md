@@ -1,4 +1,5 @@
 # Pyriod
+[![tests](https://github.com/keatonb/Pyriod/actions/workflows/tests.yml/badge.svg)](https://github.com/keatonb/Pyriod/actions/workflows/tests.yml)
 
 Python implementation of basic period detection and fitting routines for astronomical time series.
 
