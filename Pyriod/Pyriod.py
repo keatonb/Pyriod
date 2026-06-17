@@ -1483,7 +1483,7 @@ class Pyriod(object):
 
     def delete_rows(self, indices):
         """
-        Drop provided indices from stagedvalues attribute and Signals table.
+        Drop provided indices from stagedvalues and Signals table.
 
         Signals will not be dropped from the current model until a new fit is
         performed.
@@ -1497,14 +1497,33 @@ class Pyriod(object):
         -------
         None.
         """
-        if len("indices") == 0:
-            self.log("No signals selected for deletion.", 'warning')
-            pass  # Nothing to remove
-        self.log("Deleted signals {}".format([sig for sig in indices]))
-        self.stagedvalues = self.stagedvalues.drop(indices)
+        
+        # Accept a single string, a pandas Index, list, tuple, or ndarray.
+        if isinstance(indices, str):
+            indices = [indices]
+        else:
+            indices = list(indices)
+        if len(indices) == 0:
+            self.log("No signals selected for deletion.", level='warning')
+            return  # Nothing to remove
+        
+        # Check if any requested indices are missing
+        missing = [idx for idx in indices if idx not in self.stagedvalues.index]
+        if missing:
+            self.log(f"Signals not found and not deleted: {missing}", level="warning")
+        
+        # Check that any requested indices are present
+        existing = [idx for idx in indices if idx in self.stagedvalues.index]
+        if not existing:
+            return
+        
+        self.log(f"Deleted signals {existing}")
+        self.stagedvalues = self.stagedvalues.drop(existing)
+
         if self.gui:
             self.signals_qgrid.df = (
-                self.signals_qgrid.get_changed_df().drop(indices))
+                self.signals_qgrid.get_changed_df().drop(existing))
+        
         self._model_current(current=False)  # Not deleted until re-fit
 
     def _delete_selected(self, *args):
