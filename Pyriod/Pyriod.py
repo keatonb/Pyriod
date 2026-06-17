@@ -51,6 +51,7 @@ from ipyfilechooser import FileChooser
 
 # Local imports
 # from .pyquist import subfreq (not currently used)
+from .combinations import evaluate_combination, validate_combination, CombinationExpressionError
 
 plt.ioff()  # Turn off interactive mode
 
@@ -1067,13 +1068,28 @@ class Pyriod(object):
                  f"{freq} and amplitude {amp}.")
         self._model_current(False)
 
+    def _combination_to_lmfit_expr(self, combostr, prefixmap):
+        """
+        Convert 'f0+2*f1' into an lmfit expression like 'f0freq+2*f1freq'.
+        """
+        known_labels = set(map(str.lower, self.stagedvalues.index))
+        if not validate_combination(combostr, known_labels):
+            raise ValueError(f"Invalid combination expression: {combostr}")
+
+        parts = re.split(r"(\+|\-|\*|\/|\(|\))", combostr.replace(" ", "").lower())
+        converted = []
+        for part in parts:
+            if part in self.stagedvalues.index:
+                converted.append(prefixmap.get(part, part) + "freq")
+            else:
+                converted.append(part)
+
+        return "".join(converted)
+
     def _valid_combo(self, combostr):
         """Check that provided combination string is a valid expression."""
-        parts = re.split(r'\+|\-|\*|\/', combostr.replace(" ", "").lower())
-        allvalid = np.all([(part in self.stagedvalues.index)
-                           or part.replace('.', '', 1).isdigit()
-                           for part in parts])
-        return allvalid and (len(parts) > 1)
+        known_labels = set(map(str.lower, self.stagedvalues.index))
+        return validate_combination(combostr, known_labels)
 
     def add_combination(self, combostr, amp=None, phase=None, fixamp=False,
                         fixphase=False, include=True, brute=False,
@@ -1120,23 +1136,25 @@ class Pyriod(object):
         combostr, amp, phase, fixamp, fixphase, include, brute, index = (
             self._make_all_iter([combostr, amp, phase, fixamp, fixphase,
                                  include, brute, index]))
-        freq = np.zeros(len(combostr))
-        for i in range(len(combostr)):
-            combostr[i] = combostr[i].replace(" ", "").lower()
-            # Evaluate combostring, replacing keys with values.
-            parts = re.split(r'\+|\-|\*|\/',
-                             combostr[i].replace(" ", "").lower())
-            keys = set([part for part in parts if part
-                        in self.stagedvalues.index])
-            exploded = re.split(r'(\+|\-|\*|\/)',
-                                combostr[i].replace(" ", "").lower())
-            expression = "".join([str(self.stagedvalues.loc[val, 'freq'])
-                                  if val in keys else val for val in exploded])
-            freq[i] = eval(expression)
-            if amp[i] is None:
-                amp[i] = self.interpls(freq[i])
-        self.add_signal(list(freq), amp, phase, False, fixamp, fixphase,
-                        include, brute, index=combostr)
+        freq = np.zeros(len(combostr)) # Initial evaulation of provided expressions
+
+        freq_lookup = {
+            str(label).lower(): float(self.stagedvalues.loc[label, "freq"])
+            for label in self.stagedvalues.index
+        } # labels that expressions can be a combination of
+
+        if all([self._valid_combo(c) for c in combostr]): #Make sure all look valid
+            try: # In case combos are invalid
+                for i in range(len(combostr)):
+                    freq[i] = evaluate_combination(combostr[i], freq_lookup)
+                    if amp[i] is None:
+                        amp[i] = self.interpls(freq[i])
+                self.add_signal(list(freq), amp, phase, False, fixamp, fixphase,
+                                include, brute, index=combostr)
+            except CombinationExpressionError as exc:
+                self.log(f"Invalid combination string provided in {combostr}.","error")
+        else:
+            self.log(f"Invalid combination string provided in {combostr}.","error")
 
     def _brute_phase_est(self, freq, amp, brute_step=0.1):
         """Estimate phase by brute force sampling.
@@ -1242,12 +1260,7 @@ class Pyriod(object):
                     useprefix = 'c{}'.format(cnum)
                     signals[useprefix] = Model(sin, prefix=useprefix)
                     params.update(signals[useprefix].make_params())
-                    parts = re.split(r'\+|\-|\*|\/', prefix)
-                    keys = set([part for part in parts
-                                if part in self.stagedvalues.index])
-                    exploded = re.split(r'(\+|\-|\*|\/)', prefix)
-                    expression = "".join([val+'freq' if val in keys else val
-                                          for val in exploded])
+                    expression = self._combination_to_lmfit_expr(prefix, prefixmap)
                     params[useprefix+'freq'].set(expr=expression)
                     params[useprefix+'amp'].set(
                         self.stagedvalues.amp[prefix],
@@ -1551,8 +1564,7 @@ class Pyriod(object):
         elif self._valid_combo(self._thisfreq.value):
             self.add_combination(self._thisfreq.value)
         else:
-            self.log("Staged frequency has invalid format: {}"
-                     .format(self._thisfreq.value), "error")
+            self.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
 
     def _update_lc_display(self, *args):
         """Change type of time series to display from dropdown."""
