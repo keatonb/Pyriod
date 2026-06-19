@@ -20,7 +20,7 @@ To install, use
 
 or download the latest (possibly unstable) version from [GitHub](https://github.com/keatonb/Pyriod) and run
 
-```python setup.py install```.
+```python -m pip install .```.
 
 ## Dependencies
 

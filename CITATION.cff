@@ -1,0 +1,30 @@
+# CITATION.cff
+
+cff-version: 1.2.0
+title: "Pyriod: Interactive prewhitening and sinusoidal fitting for astronomical time series"
+message: "If you use Pyriod, please cite its ASCL record: Bell (2022), ascl:2207.007, bibcode 2022ascl.soft07007B."
+type: software
+authors:
+  - family-names: Bell
+    given-names: Keaton
+repository-code: "https://github.com/keatonb/Pyriod"
+repository: "https://ascl.net/2207.007"
+url: "https://pyriod.readthedocs.io/"
+license: "GPL-3.0-or-later"
+version: "0.3.5"
+date-released: "2026-06-19"
+
+identifiers:
+  - type: other
+    value: "ascl:2207.007"
+    description: "Astrophysics Source Code Library record"
+  - type: other
+    value: "2022ascl.soft07007B"
+    description: "SAO/NASA ADS bibcode for the ASCL record"
+
+keywords:
+  - astronomy
+  - asteroseismology
+  - prewhitening
+  - periodogram
+  - light curve

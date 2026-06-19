@@ -11,10 +11,13 @@ To install, use
 
 or download the latest (possibly unstable) version from GitHub and run
 
-```python setup.py install```
+```python -m pip install .```
 
 Additional documentation is available at [pyriod.readthedocs.io](https://pyriod.readthedocs.io).
 
 This code uses [Qgrid](https://github.com/quantopian/qgrid) and other Jupyter widgets to interactively display the frequency solution.  
 Unfortunately Qgrid is no longer supported. We are grateful to @zhihanyue for maintaining [qgridnext](https://github.com/zhihanyue/qgridnext).
 
+This material is based upon work supported by the National Science Foundation under Grant No. AST-2406917.
+
+If you use this code in a published analysis, please cite record [ascl:2207.007](https://ui.adsabs.harvard.edu/abs/2022ascl.soft07007B/abstract) of the Astrophysics Source Code Library.
