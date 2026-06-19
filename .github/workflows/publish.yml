@@ -9,6 +9,10 @@ on:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    
+    environment:
+      name: pypi
+      url: https://pypi.org/project/Pyriod/
 
     permissions:
       id-token: write
