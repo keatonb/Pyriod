@@ -1,7 +1,7 @@
 # Pyriod
 [![Tests](https://github.com/keatonb/Pyriod/actions/workflows/tests.yml/badge.svg)](https://github.com/keatonb/Pyriod/actions/workflows/tests.yml)
 [![PyPI version](https://img.shields.io/pypi/v/Pyriod.svg)](https://pypi.org/project/Pyriod/)
-[![DOI](https://zenodo.org/badge/REPO_ID.svg)](https://zenodo.org/badge/latestdoi/REPO_ID)
+[![DOI](https://zenodo.org/badge/REPO_ID.svg)](https://zenodo.org/badge/latestdoi/176140892)
 [![Documentation Status](https://readthedocs.org/projects/pyriod/badge/?version=latest)](https://pyriod.readthedocs.io/en/latest/)
 
 Python implementation of basic period detection and fitting routines for astronomical time series.
