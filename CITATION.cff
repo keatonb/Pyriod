@@ -11,7 +11,7 @@ repository-code: "https://github.com/keatonb/Pyriod"
 repository: "https://ascl.net/2207.007"
 url: "https://pyriod.readthedocs.io/"
 license: "GPL-3.0-or-later"
-version: "0.3.5"
+version: "0.3.6"
 date-released: "2026-06-19"
 
 identifiers:
