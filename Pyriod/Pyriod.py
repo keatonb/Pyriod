@@ -1947,16 +1947,29 @@ class Pyriod(object):
         else:
             print("GUI disabled.")
 
+    def _as_scalar_float(self, value):
+        """Convert scalar-like, length-1 array-like, or Quantity-like value to float."""
+        # Strip astropy Quantity if present
+        if hasattr(value, "value"):
+            value = value.value
+
+        # Convert numpy arrays/lists/scalars to ndarray, then flatten
+        arr = np.asarray(value).ravel()
+
+        if len(arr) != 1:
+            raise ValueError(f"Expected scalar or length-1 value, got shape {np.shape(value)}")
+
+        return float(arr[0])
+
     def _update_marker(self, x, y):
-        # Move the signal marker.
-        try:
-            self._thisfreq.value = str(x[0])
-        except:
-            self._thisfreq.value = str(x)
+        # Move the signal marker to the currently selected periodogram peak.
+        x = self._as_scalar_float(x)
+        y = self._as_scalar_float(y)
+        self._thisfreq.value = f"{x:.12g}"
         self._thisamp.value = y
+
         self.marker.set_data([x], [y])
         self.perfig.canvas.draw_idle()
-        self.perfig.canvas.flush_events()
 
     def _mark_highest_peak(self):
         # Move signal marker to current highest peak.
