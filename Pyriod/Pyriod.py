@@ -271,32 +271,9 @@ class Pyriod(object):
         # Apply time shift to get phases to be well behaved
         self._calc_tshift()
 
-        # Store version sampled as the data as lc column (TODO: DON'T STORE IT!)
-        good = np.where(self.lc["include"])
-        initmodel = (np.zeros(len(self.lc))*self.lc.flux.unit 
-                     + np.mean(self.lc.flux[good]))    
-        # Also plot the model over the time series
+        # Prepare viewport model display
         if self.gui:
-            # Sample the model a bit more finely than the data and through gaps
-            # This can be a problematic amount of sampling through large gaps!
-            # Base the sampling on the highest frequency sampled in the periodogram.
-            dt = 0.5*self.freq_conversion/(np.max(self.freqs))
-            if (dt == 0) or ~np.isfinite(dt):
-                dt = 1. / (24*3600)  # 1s
-            tspan = (np.max(lc.time.value) - np.min(lc.time.value))
-            osample = 2
-            nsamples = int(round(osample*tspan/dt))
-            time_samples = TimeSeries(time_start=np.min(lc.time),
-                                      time_delta=dt * u.day / osample,
-                                      n_samples=nsamples).time
-            initmodel = np.zeros(nsamples)+np.mean(np.array(self.lc.flux))
-            self.lc_model_sampled = lk.LightCurve(time=time_samples,
-                                                  flux=initmodel)
-            self._lcplot_model, = self.lcax.plot(
-                self.lc_model_sampled.time.value,
-                self.lc_model_sampled.flux,
-                c='r', lw=1, alpha=0.7)
-
+            self._init_viewport_model_plot()
 
         ### PERIODOGRAM ###
         # Four types for display
@@ -438,7 +415,10 @@ class Pyriod(object):
 
     def _set_plot_labels(self):
         # Light curve labels
-        self.lcax.set_xlabel(f"time ({self.time_unit.to_string()})")
+        if self._fold.value:
+            self.lcax.set_xlabel(f"phase folded on {self._fold_on.value:.6g} {self.freq_unit} (0-1)")
+        else:
+            self.lcax.set_xlabel(f"time ({self.time_unit.to_string()})")
         self.lcax.set_ylabel("rel. variation")
         # Periodogram labels
         self.perax.set_ylabel(f"amplitude ({self.amp_unit})")
@@ -509,6 +489,96 @@ class Pyriod(object):
         #path = Path(__file__).parent / 'docs/TimeSeries.md'
         #html = gh_md_to_html.main(str(path), enable_image_downloading=False)
         #self._timeseries_readme = widgets.HTML(html)
+
+    def _init_viewport_model_plot(self):
+        # Create the line once. Do not recreate it on every zoom/pan.
+        self._lcplot_model, = self.lcax.plot([np.min(self.lc.time.value),np.max(self.lc.time.value)], 
+                                             [1,1], lw=1, c='r', zorder=3)
+
+        self.max_model_plot_points = 20_000
+        self.model_oversample = 20  # samples per cycle of highest included frequency
+        self._last_model_xlim = None
+
+        self._model_update_timer = self.lcfig.canvas.new_timer(interval=75)
+        self._model_update_timer.single_shot = True
+        self._model_update_timer.add_callback(self._refresh_model_line_from_view)
+
+        # Update model whenever the visible x-range changes.
+        self._model_xlim_callback_id = self.lcax.callbacks.connect(
+            "xlim_changed",
+            self._request_model_line_update,
+        )
+
+        # Draw the initial model.
+        self._update_sampled_model()
+
+    def _request_model_line_update(self, ax=None):
+        self._model_update_timer.stop()
+        self._model_update_timer.start()
+
+    def _update_sampled_model(self):
+        self._last_model_xlim = None
+        self._request_model_line_update()
+
+    def _refresh_model_line_from_view(self):
+        if self._fold.value: # don't display folded model
+            return
+
+        x0, x1 = self.lcax.get_xlim()
+        xmin, xmax = sorted((x0, x1))
+
+        # If displaying residuals, should be a flat line at zero
+        if self._tstype.value == 'Residuals':
+            self._lcplot_model.set_data([x0, x1], [0,0])
+            self.lcfig.canvas.draw_idle()
+            return
+
+        # Avoid recomputing if nothing changed
+        xlim = (xmin, xmax)
+        if self._last_model_xlim == xlim:
+            return
+        self._last_model_xlim = xlim
+
+        timesample = self._make_model_time_grid(xmin, xmax)
+
+        if timesample.size == 0:
+            self._lcplot_model.set_data([], [])
+        else:
+            good = np.where(self.lc["include"])
+            meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
+            modelsampled = meanflux + self.sample_model(timesample)
+            self._lcplot_model.set_data(timesample, modelsampled)
+
+        self.lcfig.canvas.draw_idle()
+
+    def _make_model_time_grid(self, xmin, xmax):
+        # Sample the model sensibly within the current viewport
+        span = xmax - xmin
+        if span <= 0:
+            return np.array([])
+
+        # Highest currently included fitted frequency.
+        fitvalues = self.fitvalues
+        included = fitvalues["include"].to_numpy(dtype=bool)
+
+        if not np.any(included):
+            return np.array([np.min(self.lc.time.value),np.max(self.lc.time.value)])
+
+        fmax = np.nanmax(np.abs(fitvalues.loc[included, "freq"].to_numpy()))
+
+        # Enough samples to trace the highest-frequency included sinusoid.
+        n_by_freq = int(np.ceil(self.model_oversample * fmax * span))
+
+        # Also use at least about one point per display pixel.
+        try:
+            n_by_pixels = int(self.lcax.bbox.width)
+        except Exception:
+            n_by_pixels = 1000
+
+        n = max(2, n_by_freq, n_by_pixels)
+        n = min(n, self.max_model_plot_points)
+
+        return np.linspace(xmin, xmax, n)
 
     def _init_periodogram_widgets(self):
         """Set up Periodogram widgets."""
@@ -1315,7 +1385,6 @@ class Pyriod(object):
             self._update_values_from_fit(self.fit_result.params, prefixmap)
 
         # Update lightcurves and periodograms for new residuals
-        self._update_lcs()
         self.compute_pers()
 
         if self.gui:  # Update plots and displays
@@ -1448,15 +1517,6 @@ class Pyriod(object):
             phase = float(self.fitvalues.loc[prefix, 'phase'])
             flux += sin(time, freq*self.freq_conversion, amp, phase)
         return flux
-
-    def _update_lcs(self):
-        """Update sampled models and residuals time series."""
-        good = np.where(self.lc["include"])
-        meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
-        if self.gui:  # Sampled model
-            self.lc_model_sampled.flux = (
-                meanflux + self.sample_model(self.lc_model_sampled.time.value))
-
 
     def _qgrid_changed_manually(self, *args):
         """Pass along manual changes to Signals table to."""
@@ -1623,10 +1683,9 @@ class Pyriod(object):
             meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
             modellc = meanflux + self.sample_model(self.lc.time.value[good])*self.lc.flux.unit
             lc.flux = self.lc["flux"] - modellc # this to be displayed
-            self._lcplot_model.set_ydata(
-                np.zeros(len(self.lc_model_sampled.flux)))
+            self._update_sampled_model() # handles residuals
         else:
-            self._lcplot_model.set_ydata(self.lc_model_sampled.flux)
+            self._update_sampled_model()
         # Rescale y to better match data
         good = np.where(self.lc["include"])
         ymin = np.min(lc.flux[good].value)
@@ -1637,13 +1696,16 @@ class Pyriod(object):
             xdata = lc.time.value*self._fold_on.value*self.freq_conversion % 1.
             self._lcplot_data.set_offsets(np.dstack((xdata, lc.flux.value))[0])
             self.lcax.set_xlim(-0.01, 1.01)
+            self._lcplot_model.set_alpha(0) # don't show model
         else:
             self._lcplot_data.set_offsets(np.dstack((lc.time.value,
                                                     lc.flux.value))[0])
             tspan = np.ptp(lc.time.value)
+            self._lcplot_model.set_alpha(1) # show model
             self.lcax.set_xlim(np.min(lc.time.value) - 0.01*tspan,
                                np.max(lc.time.value) + 0.01*tspan)
         self._selector.update(self._lcplot_data)
+        self._set_plot_labels()
         self.lcfig.canvas.draw_idle()
 
     def _mask_selected_pts(self, event):
@@ -1662,7 +1724,7 @@ class Pyriod(object):
         self._lcplot_data.set_facecolors([self._lc_colors[m]
                                          for m in self.lc["include"]])
         self._lcplot_data.set_edgecolors("None")
-        self._update_lcs()
+        self._update_sampled_model()
         self._update_lc_display()
         self._calc_tshift()
 
