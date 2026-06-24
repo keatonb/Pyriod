@@ -321,9 +321,6 @@ class Pyriod(object):
         self.noise_spectrum = None
         self.significance_multiplier = None
 
-        # Make interpolator for residual periodogram
-        self.interpls = interp1d(self.freqs, self.per_resid)
-
         # Initialize periodogram plot
         if self.gui:
             # Set up figs/axes for periodogram plots
@@ -1158,7 +1155,7 @@ class Pyriod(object):
                 for i in range(len(combostr)):
                     freq[i] = evaluate_combination(combostr[i], freq_lookup)
                     if amp[i] is None:
-                        amp[i] = self.interpls(freq[i])
+                        amp[i] = np.interp(freq[i],self.freqs,self.per_resid)
                 self.add_signal(list(freq), amp, phase, False, fixamp, fixphase,
                                 include, brute, index=combostr)
             except CombinationExpressionError as exc:
@@ -1718,10 +1715,6 @@ class Pyriod(object):
                                                    freq_unit=self.freq_unit,
                                                    frequency=self.freqs).power.value
                               * self.amp_conversion)
-        # Interpolator for periodogram of residuals.
-        self.interpls = interp1d(self.freqs, self.per_resid,
-                                 bounds_error=False,
-                                 fill_value=np.max(self.per_resid))
         self._log_per_properties()
         # If auto-recalculate set for significance threshold:
         if self.gui:
@@ -1784,7 +1777,7 @@ class Pyriod(object):
             highestind = np.nanargmax(ydata[nearby]) + nearby[0]
             self._update_marker(self.freqs[highestind], ydata[highestind])
         else:
-            self._update_marker(event.xdata, self.interpls(event.xdata))
+            self._update_marker(event.xdata, np.interp(event.xdata,self.freqs,self.per_resid))
 
     def calculate_significance_threshold(self, multiplier=5, startfreq=0,
                                          endfreq=None, freqstep=100,
