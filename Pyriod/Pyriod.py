@@ -264,7 +264,7 @@ class Pyriod(object):
                 self.lc.time.value, np.array(self.lc.flux.value), marker='o',
                 s=5, ec='None', lw=1, c=self._lc_colors[1])
             # Define selector for masking points
-            self.selector = lasso_selector(self.lcax, self._lcplot_data)
+            self._selector = lasso_selector(self.lcax, self._lcplot_data)
             self.lcfig.canvas.mpl_connect("key_press_event",
                                           self._mask_selected_pts)
 
@@ -349,7 +349,7 @@ class Pyriod(object):
             # Create markers for selected peak, adopted signals
             self._marker = self.perax.plot([0], [0], c='k', marker='o')[0]
             self._signal_marker_color = 'green'
-            self.signal_markers, = self.perax.plot([], [], marker='D',
+            self._signal_markers, = self.perax.plot([], [], marker='D',
                                                    fillstyle='none',
                                                    linestyle='None',
                                                    c=self._signal_marker_color,
@@ -384,8 +384,8 @@ class Pyriod(object):
         # The interface for interacting with the values DataFrame:
         if self.gui:
             self._init_signals_qgrid()
-            self.signals_qgrid = self._get_qgrid()
-            self.signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
+            self._signals_qgrid = self._get_qgrid()
+            self._signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
             self._init_signals_widgets()
             self._update_fit_report()  # No fit to report
 
@@ -1068,8 +1068,8 @@ class Pyriod(object):
             self._update_freq_dropdown()  # For folding time series
             displayframe = self.stagedvalues.copy()
             displayframe["amp"] = displayframe["amp"] * self.amp_conversion
-            self.signals_qgrid.df = displayframe.combine_first(
-                self.signals_qgrid.df)  # Update qgrid displayed values
+            self._signals_qgrid.df = displayframe.combine_first(
+                self._signals_qgrid.df)  # Update qgrid displayed values
             self._update_signal_markers()
         self.log(f"Signal {index} added to model with frequency "
                  f"{freq} and amplitude {amp}.")
@@ -1371,9 +1371,9 @@ class Pyriod(object):
 
         # Update qgrid and staged values
         if self.gui:
-            self.signals_qgrid.df = (
+            self._signals_qgrid.df = (
                 self._convert_fitvalues_to_qgrid()
-                .combine_first(self.signals_qgrid.get_changed_df()))
+                .combine_first(self._signals_qgrid.get_changed_df()))
             self._update_stagedvalues_from_qgrid()
         else:
             tempdf = self.fitvalues.copy()
@@ -1400,7 +1400,7 @@ class Pyriod(object):
         return tempdf
 
     def _convert_qgrid_to_stagedvalues(self):
-        tempdf = (self.signals_qgrid.get_changed_df().copy()
+        tempdf = (self._signals_qgrid.get_changed_df().copy()
                   .astype(dtype=dict(zip(self.columns, self.dtypes))))
         tempdf["amp"] /= self.amp_conversion
         tempdf["amperr"] /= self.amp_conversion
@@ -1461,8 +1461,8 @@ class Pyriod(object):
     def _qgrid_changed_manually(self, *args):
         """Pass along manual changes to Signals table to."""
         # Note: args has information about what changed if needed
-        newdf = self.signals_qgrid.get_changed_df()
-        olddf = self.signals_qgrid.df
+        newdf = self._signals_qgrid.get_changed_df()
+        olddf = self._signals_qgrid.df
 
         logmessage = "Signals table changed manually.\n"
 
@@ -1532,17 +1532,17 @@ class Pyriod(object):
         self.stagedvalues = self.stagedvalues.drop(existing)
 
         if self.gui:
-            self.signals_qgrid.df = (
-                self.signals_qgrid.get_changed_df().drop(existing))
+            self._signals_qgrid.df = (
+                self._signals_qgrid.get_changed_df().drop(existing))
         
         self._model_current(current=False)  # Not deleted until re-fit
 
     def _delete_selected(self, *args):
         """Delete signals corresponding to Qgrid rows."""
-        self.delete_rows(self.signals_qgrid.get_selected_df().index)
+        self.delete_rows(self._signals_qgrid.get_selected_df().index)
         # Also delete associated combination frequencies
         isindep = lambda key: key[1:].isdigit()
-        for key in self.signals_qgrid.df.index:
+        for key in self._signals_qgrid.df.index:
             if not isindep(key) and not self._valid_combo(key):
                 self.delete_rows(key)
 
@@ -1607,7 +1607,7 @@ class Pyriod(object):
         indep = np.array([key[1:].isdigit() for key in
                           self.stagedvalues.index[self.stagedvalues.include]])
 
-        self.signal_markers.set_data(freqs[np.where(indep)],
+        self._signal_markers.set_data(freqs[np.where(indep)],
                                      amps[np.where(indep)])
         if len(indep) > 0:
             self._combo_markers.set_data(freqs[np.where(~indep)],
@@ -1643,13 +1643,13 @@ class Pyriod(object):
             tspan = np.ptp(lc.time.value)
             self.lcax.set_xlim(np.min(lc.time.value) - 0.01*tspan,
                                np.max(lc.time.value) + 0.01*tspan)
-        self.selector.update(self._lcplot_data)
+        self._selector.update(self._lcplot_data)
         self.lcfig.canvas.draw_idle()
 
     def _mask_selected_pts(self, event):
-        if ((event.key in ["backspace", "delete"]) and (len(self.selector.ind) > 0)):
-            self.log(f"Masking {len(self.selector.ind)} selected points.")
-            self.lc["include"][self.selector.ind] = 0
+        if ((event.key in ["backspace", "delete"]) and (len(self._selector.ind) > 0)):
+            self.log(f"Masking {len(self._selector.ind)} selected points.")
+            self.lc["include"][self._selector.ind] = 0
             self._mask_changed()
 
     def _clear_mask(self, b):
@@ -1658,7 +1658,7 @@ class Pyriod(object):
         self._mask_changed()
 
     def _mask_changed(self):
-        self.selector.ind = []
+        self._selector.ind = []
         self._lcplot_data.set_facecolors([self._lc_colors[m]
                                          for m in self.lc["include"]])
         self._lcplot_data.set_edgecolors("None")
@@ -1700,7 +1700,7 @@ class Pyriod(object):
                 frequency=self.freqs).power.value * self.amp_conversion
         with np.errstate(invalid='ignore'):
             # Periodogram of model
-            meanflux = np.nanmean(self.lc.flux.value[good])
+            meanflux = float(np.nanmean(self.lc.flux.value[good]))
             modellc = lk.LightCurve(time = self.lc.time[good],
                                     flux = (meanflux + self.sample_model(self.lc.time.value[good]))
                                                 *self.lc.flux.unit)
@@ -1758,10 +1758,10 @@ class Pyriod(object):
 
     def _display_per_markers(self, *args):
         if self._show_per_markers.value:
-            self.signal_markers.set_alpha(1)
+            self._signal_markers.set_alpha(1)
             self._combo_markers.set_alpha(1)
         else:
-            self.signal_markers.set_alpha(0)
+            self._signal_markers.set_alpha(0)
             self._combo_markers.set_alpha(0)
         self.perfig.canvas.draw_idle()
 
@@ -2021,7 +2021,7 @@ class Pyriod(object):
             return VBox([self._status,
                          HBox([self._refit, self._thisfreq, self._thisamp,
                                self._addtosol, self._delete]),
-                         self.signals_qgrid,
+                         self._signals_qgrid,
                          HBox([self._save, self._load,
                                self._signals_file_location]),
                          fitreport])
@@ -2082,7 +2082,7 @@ class Pyriod(object):
             logmessage = ("Loading signal solution from "
                           + os.path.abspath(filename) + ".\n")
             self.log(logmessage)
-            self.signals_qgrid.df = loaddf
+            self._signals_qgrid.df = loaddf
             self._update_stagedvalues_from_qgrid()
         else:
             self.log("Failed to load " + os.path.abspath(filename)
