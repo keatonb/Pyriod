@@ -200,20 +200,26 @@ class Pyriod(object):
 
         ### TIME SERIES ###
         # Stored as lightkurve.LightCurve object
+        # all provided columns besides time, flux, and flux_err are not stored
         # "flux" column is original data
         # "resid" is residuals
         # "include" is included points
         # "model_sampled" is the model sampled as the data
-        # A separate LightCurve object holds a model that is better sampled
+        # A separate LightCurve object holds a model that is better sampled (this is the source of most memory issues)
 
         # Input must be Lightkurve LightCurve type
         if not issubclass(type(lc), lk.LightCurve):
             raise TypeError('lc must be a lightkurve.LightCurve object.')
         self.lc = lc.copy()  # copy so we don't modify original
 
+        # Drop all columns besides time, flux, and flux_err
+        keepcolumns = ['time','flux','flux_err']
+        self.lc.remove_columns([col for col in lc.columns if col not in keepcolumns])
+
         # Check for nans and remove if needed
-        if np.sum(np.isnan(np.array(self.lc.flux.value))) > 0:
-            self.log("Removing nans from light curve flux column.")
+        nnans = np.sum(np.isnan(np.array(self.lc.flux.value)))
+        if nnans > 0:
+            self.log(f"Removing {nnans} nans from light curve flux column.")
             self.lc = self.lc.remove_nans()
 
         # Will we be using weights in the fitting?
@@ -238,7 +244,6 @@ class Pyriod(object):
 
         # Maintain a mask of points to exclude from analysis
         self.lc["include"] = np.ones(len(self.lc))  # 1 = include
-        self.include = np.where(self.lc["include"])
 
         # Establish frequency sampling
         self.set_frequency_sampling(**kwargs)
@@ -261,9 +266,10 @@ class Pyriod(object):
         # Apply time shift to get phases to be well behaved
         self._calc_tshift()
 
-        # Store version sampled as the data as lc column
+        # Store version sampled as the data as lc column (TODO: DON'T STORE IT!)
+        good = np.where(self.lc["include"])
         initmodel = (np.zeros(len(self.lc))*self.lc.flux.unit
-                     + np.mean(self.lc.flux[self.include]))
+                     + np.mean(self.lc.flux[good]))
         self.lc["model"] = initmodel
         # Also plot the model over the time series
         if self.gui:
@@ -1190,11 +1196,12 @@ class Pyriod(object):
         params['amp'].set(amp, vary=False)
         params['phase'].set(0.5, vary=True, min=0, max=1,
                             brute_step=brute_step)
+        good = np.where(self.lc["include"])
         result = model.fit(
-            (self.lc["resid"][self.include].value
-             - np.mean(self.lc["resid"][self.include].value)),
+            (self.lc["resid"][good].value
+             - np.mean(self.lc["resid"][good].value)),
             params,
-            x=(self.lc.time.value[self.include]+self.tshift),
+            x=(self.lc.time.value[good]+self.tshift),
             method='brute')
         return result.params['phase'].value
 
@@ -1291,16 +1298,18 @@ class Pyriod(object):
                 [signals[prefixmap[prefix]] for prefix in
                  self.stagedvalues.index[self.stagedvalues.include]])
 
+            good = np.where(self.lc["include"])
+
             # What to use for weights? (stddev if not real error bars)
-            weights = 1/np.std(self.lc.resid.value[self.include])
+            weights = 1/np.std(self.lc.resid.value[good])
             if self.use_weights:
-                weights = 1/np.array(self.lc.flux_err.value[self.include])
+                weights = 1/np.array(self.lc.flux_err.value[good])
 
             # Fit the model
-            fluxarray= np.array(self.lc.flux.value[self.include])
+            fluxarray= np.array(self.lc.flux.value[good])
             self.fit_result = model.fit(
                 fluxarray - np.mean(fluxarray),
-                params, x=self.lc.time.value[self.include]+self.tshift,
+                params, x=self.lc.time.value[good]+self.tshift,
                 weights=weights, scale_covar=self.rescale_covar)
 
             self.log("Fit refined.")
@@ -1444,7 +1453,8 @@ class Pyriod(object):
 
     def _update_lcs(self):
         """Update sampled models and residuals time series."""
-        meanflux = float(np.mean(np.array(self.lc.flux.value[self.include])))
+        good = np.where(self.lc["include"])
+        meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
         if self.gui:  # Sampled model
             self.lc_model_sampled.flux = (
                 meanflux + self.sample_model(self.lc_model_sampled.time.value))
@@ -1620,8 +1630,9 @@ class Pyriod(object):
         else:
             self.lcplot_model.set_ydata(self.lc_model_sampled.flux)
         # Rescale y to better match data
-        ymin = np.min(lc.flux[self.include].value)
-        ymax = np.max(lc.flux[self.include].value)
+        good = np.where(self.lc["include"])
+        ymin = np.min(lc.flux[good].value)
+        ymax = np.max(lc.flux[good].value)
         self.lcax.set_ylim(ymin-0.05*(ymax-ymin), ymax+0.05*(ymax-ymin))
         # Fold if requested
         if self._fold.value:
@@ -1649,7 +1660,6 @@ class Pyriod(object):
         self._mask_changed()
 
     def _mask_changed(self):
-        self.include = np.where(self.lc["include"])
         self.selector.ind = []
         self.lcplot_data.set_facecolors([self._lc_colors[m]
                                          for m in self.lc["include"]])
@@ -1664,7 +1674,8 @@ class Pyriod(object):
     def _calc_tshift(self, tshift=None):
         # Subtracting the mean time stabilizes phase fitting.
         if tshift is None:
-            self.tshift = -np.mean(self.lc[self.include].time.value)
+            good = np.where(self.lc["include"])
+            self.tshift = -np.mean(self.lc[good].time.value)
         else:
             self.tshift = tshift
         self.log(f'Fitted timstamps will be shifted forward relative to '
@@ -1684,17 +1695,18 @@ class Pyriod(object):
         None.
         """
         self._update_status()  # Indicate running calculation
+        good = np.where(self.lc["include"])
         if orig:  # Compute periodogram of original time series
-            self.per_orig = self.lc[self.include].to_periodogram(
+            self.per_orig = self.lc[good].to_periodogram(
                 normalization='amplitude', freq_unit=self.freq_unit,
                 frequency=self.freqs) * self.amp_conversion
         with np.errstate(invalid='ignore'):
-            self.per_model = (self.lc.select_flux("model")[self.include]
+            self.per_model = (self.lc.select_flux("model")[good]
                               .to_periodogram(normalization='amplitude',
                                               freq_unit=self.freq_unit,
                                               frequency=self.freqs)
                               * self.amp_conversion)
-            self.per_resid = (self.lc.select_flux("resid")[self.include]
+            self.per_resid = (self.lc.select_flux("resid")[good]
                               .to_periodogram(normalization='amplitude',
                                               freq_unit=self.freq_unit,
                                               frequency=self.freqs)
@@ -2187,7 +2199,8 @@ class Pyriod(object):
         """
         # Compute spectral window with DFT
         # Define the window function
-        time = self.lc.time[self.include].value
+        good = np.where(self.lc["include"])
+        time = self.lc.time[good].value
         window = np.ones(len(time))*0.5
         freqvec = np.arange(0, maxfreq, self.fres/osample)
         # DFT function (stolen from Mikemon)
