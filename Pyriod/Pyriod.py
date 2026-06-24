@@ -178,12 +178,12 @@ class Pyriod(object):
     """
 
     # Generate unique ID for this Pyriod instance
-    id_generator = itertools.count(0)
+    _id_generator = itertools.count(0)
 
     def __init__(self, lc, amp_unit='ppt', freq_unit='muHz', gui=True,
                  use_weights=True, rescale_covar=False, **kwargs):
         # Generate unique Pyriod instance ID
-        self.id = next(self.id_generator)
+        self.id = next(self._id_generator)
         self.gui = gui
 
         ### LOG ###
@@ -255,11 +255,11 @@ class Pyriod(object):
                 figsize=(7, 2), num='Time Series ({:d})'.format(self.id))
             self.lcax.set_position([0.13, 0.22, 0.85, 0.76])
             self._lc_colors = {0: "bisque", 1: "C0"}
-            self.lcplot_data = self.lcax.scatter(
+            self._lcplot_data = self.lcax.scatter(
                 self.lc.time.value, np.array(self.lc.flux.value), marker='o',
                 s=5, ec='None', lw=1, c=self._lc_colors[1])
             # Define selector for masking points
-            self.selector = lasso_selector(self.lcax, self.lcplot_data)
+            self.selector = lasso_selector(self.lcax, self._lcplot_data)
             self.lcfig.canvas.mpl_connect("key_press_event",
                                           self._mask_selected_pts)
 
@@ -288,7 +288,7 @@ class Pyriod(object):
             initmodel = np.zeros(nsamples)+np.mean(np.array(self.lc.flux))
             self.lc_model_sampled = lk.LightCurve(time=time_samples,
                                                   flux=initmodel)
-            self.lcplot_model, = self.lcax.plot(
+            self._lcplot_model, = self.lcax.plot(
                 self.lc_model_sampled.time.value,
                 self.lc_model_sampled.flux,
                 c='r', lw=1, alpha=0.7)
@@ -301,7 +301,8 @@ class Pyriod(object):
         # Four types for display
         # Original (orig), Residuals (resid), Model (model),
         # and Spectral Window (sw; TODO)
-        # Each is stored as, e.g., "per_orig", samples at self.freqs
+        # Each is sampled at self.freqs, with amplitudes
+        # per_orig, per_resid, and per_model.
         # Has associated plot _perplot_orig
         # Display toggle widget _perplot_orig_display
         # TODO: Add color picker _perplot_orig_color
@@ -320,7 +321,7 @@ class Pyriod(object):
         self.significance_multiplier = None
 
         # Make interpolator for residual periodogram
-        self.interpls = interp1d(self.freqs, self.per_resid.power.value)
+        self.interpls = interp1d(self.freqs, self.per_resid)
 
         # Initialize periodogram plot
         if self.gui:
@@ -328,19 +329,19 @@ class Pyriod(object):
             self.perfig, self.perax = plt.subplots(
                 figsize=(7, 3), num='Periodogram ({:d})'.format(self.id))
 
-            self.perplot_orig, = self.perax.plot(
-                self.per_orig.frequency, self.per_orig.power.value,
+            self._perplot_orig, = self.perax.plot(
+                self.freqs, self.per_orig,
                 lw=1, c='tab:gray')
-            self.perax.set_ylim(0, 1.05*np.nanmax(self.per_orig.power.value))
+            self.perax.set_ylim(0, 1.05*np.nanmax(self.per_orig))
             self.perax.set_xlim(np.min(self.freqs), np.max(self.freqs))
             self.perax.set_position([0.13, 0.22, 0.8, 0.76])
 
             # Plot periodogram of sampled model and residuals
-            self.perplot_model, = self.perax.plot(self.freqs,
-                                                  self.per_model.power.value,
+            self._perplot_model, = self.perax.plot(self.freqs,
+                                                  self.per_model,
                                                   lw=1, c='tab:green')
-            self.perplot_resid, = self.perax.plot(self.freqs,
-                                                  self.per_resid.power.value,
+            self._perplot_resid, = self.perax.plot(self.freqs,
+                                                  self.per_resid,
                                                   lw=1, c='tab:blue')
             # Plot significance threshold (placeholder until calculated)
             self._sig_threshold_plot, = self.perax.plot(self.freqs,
@@ -348,7 +349,7 @@ class Pyriod(object):
                                                         lw=1, c='red', ls='--')
 
             # Create markers for selected peak, adopted signals
-            self.marker = self.perax.plot([0], [0], c='k', marker='o')[0]
+            self._marker = self.perax.plot([0], [0], c='k', marker='o')[0]
             self._signal_marker_color = 'green'
             self.signal_markers, = self.perax.plot([], [], marker='D',
                                                    fillstyle='none',
@@ -356,7 +357,7 @@ class Pyriod(object):
                                                    c=self._signal_marker_color,
                                                    ms=5)
             self._combo_marker_color = 'orange'
-            self.combo_markers, = self.perax.plot([], [], marker='D',
+            self._combo_markers, = self.perax.plot([], [], marker='D',
                                                   fillstyle='none',
                                                   linestyle='None',
                                                   c=self._combo_marker_color,
@@ -437,8 +438,8 @@ class Pyriod(object):
                            '1/d': perday, '1/day': perday, 'day': perday,
                            'days': perday, 'd': perday, 'per day': perday}
             self.freq_unit = unitoptions[freq_unit.lower()]
-            self.freq_label = {perday: "1/day", muHz: "muHz"}[self.freq_unit]
-            self.log(f'Frequency unit set to {self.freq_label}.')
+            self._freq_label = {perday: "1/day", muHz: "muHz"}[self.freq_unit]
+            self.log(f'Frequency unit set to {self._freq_label}.')
         self.time_unit = u.day
         self.freq_conversion = self.time_unit.to(1/self.freq_unit)
 
@@ -448,7 +449,7 @@ class Pyriod(object):
         self.lcax.set_ylabel("rel. variation")
         # Periodogram labels
         self.perax.set_ylabel(f"amplitude ({self.amp_unit})")
-        self.perax.set_xlabel(f"frequency ({self.freq_label})")
+        self.perax.set_xlabel(f"frequency ({self._freq_label})")
 
     def _init_timeseries_widgets(self):
         """Set up Time Series widgets."""
@@ -781,15 +782,15 @@ class Pyriod(object):
 
     def _init_log(self):
         """Set up stuff needed for the Log."""
-        self.logger = logging.getLogger(f'Pyriod Logger {self.id}')
-        self.logger.setLevel(logging.DEBUG)
-        self.log_capture_string = StringIO()
-        ch = logging.StreamHandler(self.log_capture_string)
+        self._logger = logging.getLogger(f'Pyriod Logger {self.id}')
+        self._logger.setLevel(logging.DEBUG)
+        self._log_capture_string = StringIO()
+        ch = logging.StreamHandler(self._log_capture_string)
         ch.setLevel(logging.DEBUG)
         formatter = logging.Formatter(
             '%(asctime)s - %(levelname)s - %(message)s')
         ch.setFormatter(formatter)
-        self.logger.addHandler(ch)
+        self._logger.addHandler(ch)
 
         if self.gui:
             # Log HTML widget
@@ -858,11 +859,11 @@ class Pyriod(object):
 
         """
         logdict = {
-            'debug': self.logger.debug,
-            'info': self.logger.info,
-            'warning': self.logger.warning,
-            'error': self.logger.error,
-            'critical': self.logger.critical
+            'debug': self._logger.debug,
+            'info': self._logger.info,
+            'warning': self._logger.warning,
+            'error': self._logger.error,
+            'critical': self._logger.critical
             }
         if message[:-2] != '\n':
             message += '\n'
@@ -959,7 +960,7 @@ class Pyriod(object):
             self.log(f'Using user supplied frequency sampling: '
                      f'{len(frequency)} samples between frequency '
                      f'{np.min(frequency)} and {np.max(frequency)} '
-                     f'{self.freq_label}')
+                     f'{self._freq_label}')
             self.freqs = frequency
         else:
             if minfreq is None:
@@ -1567,7 +1568,7 @@ class Pyriod(object):
         # Add new frequencies to dropdown options
         labels = [self.fitvalues.index[i]
                   + ': {:.8f} '.format(self.fitvalues.freq.iloc[i])
-                  + self.per_orig.frequency.unit.to_string()
+                  + self.per_orig.freq_unit.to_string()
                   for i in range(len(self.fitvalues))]
         currentind = self._select_fold_freq.index
         if currentind is None:
@@ -1615,20 +1616,20 @@ class Pyriod(object):
         self.signal_markers.set_data(freqs[np.where(indep)],
                                      amps[np.where(indep)])
         if len(indep) > 0:
-            self.combo_markers.set_data(freqs[np.where(~indep)],
+            self._combo_markers.set_data(freqs[np.where(~indep)],
                                         amps[np.where(~indep)])
         else:
-            self.combo_markers.set_data([], [])  # No markers
+            self._combo_markers.set_data([], [])  # No markers
         self.perfig.canvas.draw_idle()
 
     def _display_lc(self, residuals=False):
         lc = self.lc.copy()
         if residuals:
             lc = self.lc.select_flux("resid").copy()
-            self.lcplot_model.set_ydata(
+            self._lcplot_model.set_ydata(
                 np.zeros(len(self.lc_model_sampled.flux)))
         else:
-            self.lcplot_model.set_ydata(self.lc_model_sampled.flux)
+            self._lcplot_model.set_ydata(self.lc_model_sampled.flux)
         # Rescale y to better match data
         good = np.where(self.lc["include"])
         ymin = np.min(lc.flux[good].value)
@@ -1637,15 +1638,15 @@ class Pyriod(object):
         # Fold if requested
         if self._fold.value:
             xdata = lc.time.value*self._fold_on.value*self.freq_conversion % 1.
-            self.lcplot_data.set_offsets(np.dstack((xdata, lc.flux.value))[0])
+            self._lcplot_data.set_offsets(np.dstack((xdata, lc.flux.value))[0])
             self.lcax.set_xlim(-0.01, 1.01)
         else:
-            self.lcplot_data.set_offsets(np.dstack((lc.time.value,
+            self._lcplot_data.set_offsets(np.dstack((lc.time.value,
                                                     lc.flux.value))[0])
             tspan = np.ptp(lc.time.value)
             self.lcax.set_xlim(np.min(lc.time.value) - 0.01*tspan,
                                np.max(lc.time.value) + 0.01*tspan)
-        self.selector.update(self.lcplot_data)
+        self.selector.update(self._lcplot_data)
         self.lcfig.canvas.draw_idle()
 
     def _mask_selected_pts(self, event):
@@ -1661,9 +1662,9 @@ class Pyriod(object):
 
     def _mask_changed(self):
         self.selector.ind = []
-        self.lcplot_data.set_facecolors([self._lc_colors[m]
+        self._lcplot_data.set_facecolors([self._lc_colors[m]
                                          for m in self.lc["include"]])
-        self.lcplot_data.set_edgecolors("None")
+        self._lcplot_data.set_edgecolors("None")
         self._update_lcs()
         self._update_lc_display()
         self._calc_tshift()
@@ -1699,22 +1700,22 @@ class Pyriod(object):
         if orig:  # Compute periodogram of original time series
             self.per_orig = self.lc[good].to_periodogram(
                 normalization='amplitude', freq_unit=self.freq_unit,
-                frequency=self.freqs) * self.amp_conversion
+                frequency=self.freqs).power.value * self.amp_conversion
         with np.errstate(invalid='ignore'):
             self.per_model = (self.lc.select_flux("model")[good]
                               .to_periodogram(normalization='amplitude',
                                               freq_unit=self.freq_unit,
-                                              frequency=self.freqs)
+                                              frequency=self.freqs).power.value
                               * self.amp_conversion)
             self.per_resid = (self.lc.select_flux("resid")[good]
                               .to_periodogram(normalization='amplitude',
                                               freq_unit=self.freq_unit,
-                                              frequency=self.freqs)
+                                              frequency=self.freqs).power.value
                               * self.amp_conversion)
         # Interpolator for periodogram of residuals.
-        self.interpls = interp1d(self.freqs, self.per_resid.power.value,
+        self.interpls = interp1d(self.freqs, self.per_resid,
                                  bounds_error=False,
-                                 fill_value=self.per_resid.max_power.value)
+                                 fill_value=np.max(self.per_resid))
         self._log_per_properties()
         # If auto-recalculate set for significance threshold:
         if self.gui:
@@ -1723,30 +1724,30 @@ class Pyriod(object):
         self._update_status(False)  # Calculation complete
 
     def _update_per_plots(self):
-        self.perplot_orig.set_ydata(self.per_orig.power.value)
-        self.perplot_model.set_ydata(self.per_model.power.value)
-        self.perplot_resid.set_ydata(self.per_resid.power.value)
+        self._perplot_orig.set_ydata(self.per_orig)
+        self._perplot_model.set_ydata(self.per_model)
+        self._perplot_resid.set_ydata(self.per_resid)
         self.perfig.canvas.draw_idle()
 
     def _display_per_orig(self, *args):
         if self._show_per_orig.value:
-            self.perplot_orig.set_alpha(1)
+            self._perplot_orig.set_alpha(1)
         else:
-            self.perplot_orig.set_alpha(0)
+            self._perplot_orig.set_alpha(0)
         self.perfig.canvas.draw_idle()
 
     def _display_per_resid(self, *args):
         if self._show_per_resid.value:
-            self.perplot_resid.set_alpha(1)
+            self._perplot_resid.set_alpha(1)
         else:
-            self.perplot_resid.set_alpha(0)
+            self._perplot_resid.set_alpha(0)
         self.perfig.canvas.draw_idle()
 
     def _display_per_model(self, *args):
         if self._show_per_model.value:
-            self.perplot_model.set_alpha(1)
+            self._perplot_model.set_alpha(1)
         else:
-            self.perplot_model.set_alpha(0)
+            self._perplot_model.set_alpha(0)
         self.perfig.canvas.draw_idle()
 
     def _display_sig_threshold(self, *args):
@@ -1759,10 +1760,10 @@ class Pyriod(object):
     def _display_per_markers(self, *args):
         if self._show_per_markers.value:
             self.signal_markers.set_alpha(1)
-            self.combo_markers.set_alpha(1)
+            self._combo_markers.set_alpha(1)
         else:
             self.signal_markers.set_alpha(0)
-            self.combo_markers.set_alpha(0)
+            self._combo_markers.set_alpha(0)
         self.perfig.canvas.draw_idle()
 
     def _onperiodogramclick(self, event):
@@ -1773,7 +1774,7 @@ class Pyriod(object):
                                 0.01*np.diff(self.perax.get_xlim())[0]])
             nearby = np.argwhere((self.freqs >= event.xdata - tolerance) &
                                  (self.freqs <= event.xdata + tolerance))
-            ydata = self.perplot_resid.get_ydata()
+            ydata = self._perplot_resid.get_ydata()
             highestind = np.nanargmax(ydata[nearby]) + nearby[0]
             self._update_marker(self.freqs[highestind], ydata[highestind])
         else:
@@ -1835,7 +1836,7 @@ class Pyriod(object):
         for i in range(nbins):
             inbin = np.where(np.logical_and(self.freqs >= binstart[i],
                                             self.freqs <= binend[i]))
-            avgnoise[i] = average(self.per_resid.power.value[inbin])
+            avgnoise[i] = average(self.per_resid[inbin])
 
         # Extrapolate if fill_value not specified
         if 'fill_value' not in kwargs.keys():
@@ -1980,14 +1981,14 @@ class Pyriod(object):
         self._thisfreq.value = f"{x:.12g}"
         self._thisamp.value = y
 
-        self.marker.set_data([x], [y])
+        self._marker.set_data([x], [y])
         self.perfig.canvas.draw_idle()
 
     def _mark_highest_peak(self):
         # Move signal marker to current highest peak.
         self._update_marker(
-            self.freqs[np.nanargmax(self.per_resid.power.value)],
-            np.nanmax(self.per_resid.power.value))
+            self.freqs[np.nanargmax(self.per_resid)],
+            np.nanmax(self.per_resid))
 
     def _onclick(self, event):
         self._onperiodogramclick(event)
@@ -2042,7 +2043,7 @@ class Pyriod(object):
             print("GUI disabled.")
 
     def _update_log(self):
-        raw_log = self.log_capture_string.getvalue()
+        raw_log = self._log_capture_string.getvalue()
         self._log.value = (
             "<pre style='white-space: pre-wrap; "
             "font-family: monospace; "
@@ -2239,6 +2240,6 @@ class Pyriod(object):
         ax.plot(freqvec, ampvec, **plt_kwargs)
         ax.set_xlim(0, maxfreq)
         ax.set_ylim(0, 1)
-        ax.set_xlabel(f"frequency ({self.freq_label})")
+        ax.set_xlabel(f"frequency ({self._freq_label})")
         ax.set_ylabel('spectral window')
         return(ax)
