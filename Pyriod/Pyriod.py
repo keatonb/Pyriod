@@ -198,6 +198,11 @@ class Pyriod(object):
 
         self.fit_result = None  # will be replaced as we do fits
 
+        # Initialize data frames that will be needed
+        # Hold signal phases, frequencies, and amplitudes in Pandas DF
+        self.stagedvalues = self._initialize_dataframe()
+        self.fitvalues = self.stagedvalues.copy().drop('brute', axis=1)
+
         ### TIME SERIES ###
         # Stored as lightkurve.LightCurve object
         # all provided columns besides time, flux, and flux_err are not stored
@@ -268,9 +273,8 @@ class Pyriod(object):
 
         # Store version sampled as the data as lc column (TODO: DON'T STORE IT!)
         good = np.where(self.lc["include"])
-        initmodel = (np.zeros(len(self.lc))*self.lc.flux.unit
-                     + np.mean(self.lc.flux[good]))
-        self.lc["model"] = initmodel
+        initmodel = (np.zeros(len(self.lc))*self.lc.flux.unit 
+                     + np.mean(self.lc.flux[good]))    
         # Also plot the model over the time series
         if self.gui:
             # Sample the model a bit more finely than the data and through gaps
@@ -292,9 +296,6 @@ class Pyriod(object):
                 self.lc_model_sampled.time.value,
                 self.lc_model_sampled.flux,
                 c='r', lw=1, alpha=0.7)
-
-        # And keep track of residuals time series
-        self.lc["resid"] = self.lc["flux"] - self.lc["model"]
 
 
         ### PERIODOGRAM ###
@@ -383,11 +384,6 @@ class Pyriod(object):
             self._set_plot_labels()
 
         ### SIGNALS ###
-
-        # Hold signal phases, frequencies, and amplitudes in Pandas DF
-        self.stagedvalues = self._initialize_dataframe()
-        self.fitvalues = self.stagedvalues.copy().drop('brute', axis=1)
-
         # The interface for interacting with the values DataFrame:
         if self.gui:
             self._init_signals_qgrid()
@@ -1198,9 +1194,10 @@ class Pyriod(object):
         params['phase'].set(0.5, vary=True, min=0, max=1,
                             brute_step=brute_step)
         good = np.where(self.lc["include"])
-        result = model.fit(
-            (self.lc["resid"][good].value
-             - np.mean(self.lc["resid"][good].value)),
+        meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
+        modellc = (meanflux + self.sample_model(self.lc.time.value[good]))*self.lc.flux.unit
+        resid = self.lc["flux"][good] - modellc # bad points dropped
+        result = model.fit(resid.value,
             params,
             x=(self.lc.time.value[good]+self.tshift),
             method='brute')
@@ -1300,9 +1297,12 @@ class Pyriod(object):
                  self.stagedvalues.index[self.stagedvalues.include]])
 
             good = np.where(self.lc["include"])
+            meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
+            modellc = (meanflux + self.sample_model(self.lc.time.value[good]))*self.lc.flux.unit
+            resid = self.lc["flux"][good] - modellc # bad points dropped
 
             # What to use for weights? (stddev if not real error bars)
-            weights = 1/np.std(self.lc.resid.value[good])
+            weights = 1/np.std(resid)
             if self.use_weights:
                 weights = 1/np.array(self.lc.flux_err.value[good])
 
@@ -1459,10 +1459,7 @@ class Pyriod(object):
         if self.gui:  # Sampled model
             self.lc_model_sampled.flux = (
                 meanflux + self.sample_model(self.lc_model_sampled.time.value))
-        # Observed is at all original times (apply mask before calculations)
-        self.lc["model"] = (
-            meanflux + self.sample_model(self.lc.time.value))*self.lc.flux.unit
-        self.lc["resid"] = self.lc.flux - self.lc["model"]
+
 
     def _qgrid_changed_manually(self, *args):
         """Pass along manual changes to Signals table to."""
@@ -1625,7 +1622,10 @@ class Pyriod(object):
     def _display_lc(self, residuals=False):
         lc = self.lc.copy()
         if residuals:
-            lc = self.lc.select_flux("resid").copy()
+            good = np.where(self.lc["include"])
+            meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
+            modellc = meanflux + self.sample_model(self.lc.time.value[good])*self.lc.flux.unit
+            lc.flux = self.lc["flux"] - modellc # this to be displayed
             self._lcplot_model.set_ydata(
                 np.zeros(len(self.lc_model_sampled.flux)))
         else:
@@ -1702,15 +1702,21 @@ class Pyriod(object):
                 normalization='amplitude', freq_unit=self.freq_unit,
                 frequency=self.freqs).power.value * self.amp_conversion
         with np.errstate(invalid='ignore'):
-            self.per_model = (self.lc.select_flux("model")[good]
-                              .to_periodogram(normalization='amplitude',
-                                              freq_unit=self.freq_unit,
-                                              frequency=self.freqs).power.value
+            # Periodogram of model
+            meanflux = np.nanmean(self.lc.flux.value[good])
+            modellc = lk.LightCurve(time = self.lc.time[good],
+                                    flux = (meanflux + self.sample_model(self.lc.time.value[good]))
+                                                *self.lc.flux.unit)
+            self.per_model = (modellc.to_periodogram(normalization='amplitude',
+                                                     freq_unit=self.freq_unit,
+                                                     frequency=self.freqs).power.value
                               * self.amp_conversion)
-            self.per_resid = (self.lc.select_flux("resid")[good]
-                              .to_periodogram(normalization='amplitude',
-                                              freq_unit=self.freq_unit,
-                                              frequency=self.freqs).power.value
+            # Periodogram of residuals
+            resid = lk.LightCurve(time = self.lc.time[good],
+                                  flux = self.lc["flux"][good] - modellc.flux) # bad points dropped
+            self.per_resid = (resid.to_periodogram(normalization='amplitude',
+                                                   freq_unit=self.freq_unit,
+                                                   frequency=self.freqs).power.value
                               * self.amp_conversion)
         # Interpolator for periodogram of residuals.
         self.interpls = interp1d(self.freqs, self.per_resid,
