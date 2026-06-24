@@ -19,7 +19,6 @@ def test_single_sinusoid_recovery(synthetic_lc):
     p.fit_model()
 
     row = p.fitvalues.iloc[0]
-    print(row)
     
     assert np.isclose(row["freq"], 5.0, atol=1e-3)
     assert np.isclose(row["amp"], 0.003, rtol=0.1)
