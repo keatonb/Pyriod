@@ -53,6 +53,11 @@ from ipyfilechooser import FileChooser
 # Local imports
 # from .pyquist import subfreq (not currently used)
 from .combinations import evaluate_combination, validate_combination, CombinationExpressionError
+from .plotsupport import (
+    decimate_visible_range,
+    minmax_decimate,
+    visible_range_indices,
+)
 
 plt.ioff()  # Turn off interactive mode
 
@@ -308,24 +313,20 @@ class Pyriod(object):
             self.perfig, self.perax = plt.subplots(
                 figsize=(7, 3), num='Periodogram ({:d})'.format(self.id))
 
-            self._perplot_orig, = self.perax.plot(
-                self.freqs, self.per_orig,
-                lw=1, c='tab:gray')
+            # Create empty plot artists once. They will be populated by
+            # _refresh_periodogram_lines_from_view().
+            self._perplot_orig, = self.perax.plot([], [], lw=1, c='tab:gray')
+            self._perplot_model, = self.perax.plot([], [], lw=1, c='tab:green')
+            self._perplot_resid, = self.perax.plot([], [], lw=1, c='tab:blue')
+
+            # Placeholder only; do not allocate self.freqs*np.nan.
+            self._sig_threshold_plot, = self.perax.plot([], [], lw=1, c='red', ls='--')
+
             self.perax.set_ylim(0, 1.05*np.nanmax(self.per_orig))
             self.perax.set_xlim(np.min(self.freqs), np.max(self.freqs))
             self.perax.set_position([0.13, 0.22, 0.8, 0.76])
 
-            # Plot periodogram of sampled model and residuals
-            self._perplot_model, = self.perax.plot(self.freqs,
-                                                  self.per_model,
-                                                  lw=1, c='tab:green')
-            self._perplot_resid, = self.perax.plot(self.freqs,
-                                                  self.per_resid,
-                                                  lw=1, c='tab:blue')
-            # Plot significance threshold (placeholder until calculated)
-            self._sig_threshold_plot, = self.perax.plot(self.freqs,
-                                                        self.freqs*np.nan,
-                                                        lw=1, c='red', ls='--')
+            self._init_viewport_periodogram_plot()
 
             # Create markers for selected peak, adopted signals
             self._marker = self.perax.plot([0], [0], c='k', marker='o')[0]
@@ -571,7 +572,8 @@ class Pyriod(object):
         fmax = np.nanmax(np.abs(fitvalues.loc[included, "freq"].to_numpy()))
 
         # Enough samples to trace the highest-frequency included sinusoid.
-        n_by_freq = int(np.ceil(self.model_oversample * fmax * span))
+        fmax_per_day = fmax * self.freq_conversion
+        n_by_freq = int(np.ceil(self.model_oversample * fmax_per_day * span))
 
         # Also use at least about one point per display pixel.
         try:
@@ -745,6 +747,96 @@ class Pyriod(object):
         #path = Path(__file__).parent / 'docs/Periodogram.md'
         #html = gh_md_to_html.main(str(path), enable_image_downloading=False)
         #self._periodogram_readme = widgets.HTML(html)
+
+    # Set up all the efficient viewport stuff here for periodogram plot
+    def _init_viewport_periodogram_plot(self):
+        """Initialize responsive, decimated periodogram plotting."""
+
+        # Maximum number of points stored in each displayed periodogram artist.
+        # Because min/max decimation emits up to two points per bin, this is an
+        # approximate cap.
+        self.max_periodogram_plot_points = 30_000
+
+        self._last_periodogram_xlim = None
+
+        # Debounce periodogram redrawing, following the light-curve model pattern.
+        self._periodogram_update_timer = self.perfig.canvas.new_timer(interval=75)
+        self._periodogram_update_timer.single_shot = True
+        self._periodogram_update_timer.add_callback(
+            self._refresh_periodogram_lines_from_view
+        )
+
+        self._periodogram_xlim_callback_id = self.perax.callbacks.connect(
+            "xlim_changed",
+            self._request_periodogram_plot_update,
+        )
+
+        self._refresh_periodogram_lines_from_view()
+
+
+    def _request_periodogram_plot_update(self, ax=None):
+        """Request a debounced periodogram redraw."""
+
+        self._periodogram_update_timer.stop()
+        self._periodogram_update_timer.start()
+
+
+    def _update_per_plots(self):
+        """Update periodogram plot data after periodograms are recomputed."""
+
+        self._last_periodogram_xlim = None
+        self._request_periodogram_plot_update()
+
+    def _refresh_periodogram_lines_from_view(self):
+        """Display only a decimated version of the visible frequency range."""
+
+        x0, x1 = self.perax.get_xlim()
+        xmin, xmax = sorted((x0, x1))
+
+        xlim = (xmin, xmax)
+        if self._last_periodogram_xlim == xlim:
+            return
+
+        self._last_periodogram_xlim = xlim
+
+        self._set_decimated_periodogram_line(
+            self._perplot_orig,
+            self.per_orig,
+            xmin,
+            xmax,
+        )
+
+        self._set_decimated_periodogram_line(
+            self._perplot_model,
+            self.per_model,
+            xmin,
+            xmax,
+        )
+
+        self._set_decimated_periodogram_line(
+            self._perplot_resid,
+            self.per_resid,
+            xmin,
+            xmax,
+        )
+
+        self.perfig.canvas.draw_idle()
+   
+    def _set_decimated_periodogram_line(self, line, power, xmin, xmax):
+        """Set one periodogram line using only visible, decimated data."""
+
+        xplot, yplot = decimate_visible_range(
+            self.freqs,
+            power,
+            xmin,
+            xmax,
+            max_points=self.max_periodogram_plot_points,
+        )
+
+        line.set_data(xplot, yplot)
+
+
+### INITIALIZE SIGNAL GRID
 
     def _init_signals_qgrid(self):
         """Define QGrid column properties."""
@@ -1791,12 +1883,6 @@ class Pyriod(object):
                 self._sigthreshfromgui()
         self._update_status(False)  # Calculation complete
 
-    def _update_per_plots(self):
-        self._perplot_orig.set_ydata(self.per_orig)
-        self._perplot_model.set_ydata(self.per_model)
-        self._perplot_resid.set_ydata(self.per_resid)
-        self.perfig.canvas.draw_idle()
-
     def _display_per_orig(self, *args):
         if self._show_per_orig.value:
             self._perplot_orig.set_alpha(1)
@@ -1835,18 +1921,44 @@ class Pyriod(object):
         self.perfig.canvas.draw_idle()
 
     def _onperiodogramclick(self, event):
+        """Handle clicks in the periodogram plot."""
+
+        if event.xdata is None:
+            return
+
         if self._snaptopeak.value:
-            # Click within either frequency resolution or 1% of displayed range
-            # TODO: make this work with log frequency too
-            tolerance = np.max([self.fres,
-                                0.01*np.diff(self.perax.get_xlim())[0]])
-            nearby = np.argwhere((self.freqs >= event.xdata - tolerance) &
-                                 (self.freqs <= event.xdata + tolerance))
-            ydata = self._perplot_resid.get_ydata()
-            highestind = np.nanargmax(ydata[nearby]) + nearby[0]
-            self._update_marker(self.freqs[highestind], ydata[highestind])
+            # Click within either frequency resolution or 1% of displayed range.
+            tolerance = np.max([
+                self.fres,
+                0.01 * np.diff(self.perax.get_xlim())[0],
+            ])
+
+            nearby = np.where(
+                (self.freqs >= event.xdata - tolerance)
+                & (self.freqs <= event.xdata + tolerance)
+            )[0]
+
+            if nearby.size == 0:
+                return
+
+            local_power = self.per_resid[nearby]
+
+            if np.all(~np.isfinite(local_power)):
+                return
+
+            best_local = np.nanargmax(local_power)
+            best_index = nearby[best_local]
+
+            self._update_marker(
+                self.freqs[best_index],
+                self.per_resid[best_index],
+            )
+
         else:
-            self._update_marker(event.xdata, np.interp(event.xdata,self.freqs,self.per_resid))
+            self._update_marker(
+                event.xdata,
+                np.interp(event.xdata, self.freqs, self.per_resid),
+            )
 
     def calculate_significance_threshold(self, multiplier=5, startfreq=0,
                                          endfreq=None, freqstep=100,
@@ -1906,6 +2018,10 @@ class Pyriod(object):
                                             self.freqs <= binend[i]))
             avgnoise[i] = average(self.per_resid[inbin])
 
+        # Store attributes for plotting
+        self._sig_threshold_freqs = midbin
+        self._sig_threshold_power = avgnoise * multiplier
+
         # Extrapolate if fill_value not specified
         if 'fill_value' not in kwargs.keys():
             kwargs["fill_value"] = "extrapolate"
@@ -1924,11 +2040,12 @@ class Pyriod(object):
 
         # update plot
         if self.gui:
-            self._sig_threshold_plot.set_ydata(
-                self.noise_spectrum(self.freqs)*self.significance_multiplier
-                )
+            self._sig_threshold_plot.set_data(
+                self._sig_threshold_freqs,
+                self._sig_threshold_power,
+            )
             self.perfig.canvas.draw_idle()
-
+        
     def _sigthreshfromgui(self, *args):
         # Compute significance threshold from GUI widget values
         fill_value = np.nan
@@ -2362,6 +2479,23 @@ class Pyriod(object):
             except Exception:
                 pass
         self._model_update_timer = None
+
+        timer = getattr(self, "_periodogram_update_timer", None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        self._periodogram_update_timer = None
+
+        perax = getattr(self, "perax", None)
+        cid = getattr(self, "_periodogram_xlim_callback_id", None)
+        if perax is not None and cid is not None:
+            try:
+                perax.callbacks.disconnect(cid)
+            except Exception:
+                pass
+        self._periodogram_xlim_callback_id = None
 
         # Disconnect the xlim_changed callback used by the viewport model.
         if getattr(self, "gui", False):
