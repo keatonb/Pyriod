@@ -144,6 +144,9 @@ class Pyriod(object):
         rescale_covar: (bool)
             Rescale covariance matrix when estimating uncertainties? The
             default is False.
+        ls_method:  (str)
+            Lomb-Scargle method keyword passed to lightkurve LombScarglePeriodogram.
+            default is "fast".
         **kwargs are passed to set_frequency_sampling() method, which takes arguments
         ----------
             frequency : array, optional
@@ -181,10 +184,11 @@ class Pyriod(object):
     _id_generator = itertools.count(0)
 
     def __init__(self, lc, amp_unit='ppt', freq_unit='muHz', gui=True,
-                 use_weights=True, rescale_covar=False, **kwargs):
+                 use_weights=True, rescale_covar=False, ls_method='fast', **kwargs):
         # Generate unique Pyriod instance ID
         self.id = next(self._id_generator)
         self.gui = gui
+        self.ls_method = ls_method
 
         ### LOG ###
         # Initialize the log first
@@ -1759,7 +1763,8 @@ class Pyriod(object):
         if orig:  # Compute periodogram of original time series
             self.per_orig = self.lc[good].to_periodogram(
                 normalization='amplitude', freq_unit=self.freq_unit,
-                frequency=self.freqs).power.value * self.amp_conversion
+                frequency=self.freqs, 
+                ls_method=self.ls_method).power.value * self.amp_conversion
         with np.errstate(invalid='ignore'):
             # Periodogram of model
             meanflux = float(np.nanmean(self.lc.flux.value[good]))
@@ -1768,15 +1773,17 @@ class Pyriod(object):
                                                 *self.lc.flux.unit)
             self.per_model = (modellc.to_periodogram(normalization='amplitude',
                                                      freq_unit=self.freq_unit,
-                                                     frequency=self.freqs).power.value
-                              * self.amp_conversion)
+                                                     frequency=self.freqs, 
+                                                     ls_method=self.ls_method).power.value
+                                                     * self.amp_conversion)
             # Periodogram of residuals
             resid = lk.LightCurve(time = self.lc.time[good],
                                   flux = self.lc["flux"][good] - modellc.flux) # bad points dropped
             self.per_resid = (resid.to_periodogram(normalization='amplitude',
                                                    freq_unit=self.freq_unit,
-                                                   frequency=self.freqs).power.value
-                              * self.amp_conversion)
+                                                   frequency=self.freqs, 
+                                                   ls_method=self.ls_method).power.value
+                                                   * self.amp_conversion)
         self._log_per_properties()
         # If auto-recalculate set for significance threshold:
         if self.gui:
@@ -2304,3 +2311,191 @@ class Pyriod(object):
         ax.set_xlabel(f"frequency ({self._freq_label})")
         ax.set_ylabel('spectral window')
         return(ax)
+
+    def close(self):
+        """Close Pyriod GUI resources.
+
+        This is intended for Jupyter/notebook use, where figures, widgets,
+        callbacks, and timers can otherwise keep a Pyriod instance alive.
+
+        The science data are not deleted. This only closes GUI/display resources.
+        """
+
+        def safe_call(obj, method, *args, **kwargs):
+            if obj is None:
+                return
+            try:
+                getattr(obj, method)(*args, **kwargs)
+            except Exception:
+                pass
+
+        def safe_remove_artist(name):
+            artist = getattr(self, name, None)
+            if artist is not None:
+                try:
+                    artist.remove()
+                except Exception:
+                    pass
+            if hasattr(self, name):
+                setattr(self, name, None)
+
+        def safe_close_widget(name):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                try:
+                    widget.close()
+                except Exception:
+                    pass
+            if hasattr(self, name):
+                setattr(self, name, None)
+
+        # Make close() idempotent.
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+
+        # Stop viewport-model update timer.
+        timer = getattr(self, "_model_update_timer", None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        self._model_update_timer = None
+
+        # Disconnect the xlim_changed callback used by the viewport model.
+        if getattr(self, "gui", False):
+            lcax = getattr(self, "lcax", None)
+            cid = getattr(self, "_model_xlim_callback_id", None)
+            if lcax is not None and cid is not None:
+                try:
+                    lcax.callbacks.disconnect(cid)
+                except Exception:
+                    pass
+            self._model_xlim_callback_id = None
+
+        # Disconnect lasso selector before closing the figure.
+        selector = getattr(self, "_selector", None)
+        if selector is not None:
+            try:
+                selector.disconnect()
+            except Exception:
+                pass
+        self._selector = None
+
+        # Close qgrid widget.
+        qgrid_widget = getattr(self, "_signals_qgrid", None)
+        if qgrid_widget is not None:
+            try:
+                qgrid_widget.off("cell_edited", self._qgrid_changed_manually)
+            except Exception:
+                pass
+            try:
+                qgrid_widget.close()
+            except Exception:
+                pass
+        self._signals_qgrid = None
+
+        # Remove Matplotlib artists.
+        for name in [
+            "_lcplot_data",
+            "_lcplot_model",
+            "_perplot_orig",
+            "_perplot_resid",
+            "_perplot_model",
+            "_sig_threshold_plot",
+            "_marker",
+            "_signal_markers",
+            "_combo_markers",
+        ]:
+            safe_remove_artist(name)
+
+        # Close figures.
+        for name in ["lcfig", "perfig"]:
+            fig = getattr(self, name, None)
+            if fig is not None:
+                try:
+                    plt.close(fig)
+                except Exception:
+                    pass
+            if hasattr(self, name):
+                setattr(self, name, None)
+
+        # Drop axes references.
+        for name in ["lcax", "perax"]:
+            if hasattr(self, name):
+                setattr(self, name, None)
+
+        # Close widgets. These are the GUI attributes created in v0.4.0.
+        for name in [
+            "_status",
+
+            # Time-series widgets
+            "_tsfig_file_location",
+            "_save_tsfig",
+            "_reset_mask",
+            "_tstype",
+            "_fold",
+            "_fold_on",
+            "_select_fold_freq",
+
+            # Periodogram widgets
+            "_perfig_file_location",
+            "_save_perfig",
+            "_thisfreq",
+            "_thisamp",
+            "_addtosol",
+            "_snaptopeak",
+            "_show_per_markers",
+            "_show_per_orig",
+            "_show_per_resid",
+            "_show_per_model",
+            "_show_sig_threshold",
+            "_sig_multiplier_widget",
+            "_sig_startfreq_widget",
+            "_sig_endfreq_widget",
+            "_sig_freqstep_widget",
+            "_sig_winwidth_widget",
+            "_sig_avgtype_widget",
+            "_sig_extrapolate_widget",
+            "_sig_auto_recalculate",
+            "_sig_calculate_button",
+
+            # Signal-table widgets
+            "_refit",
+            "_delete",
+            "_signals_file_location",
+            "_save",
+            "_load",
+            "_fit_result_html",
+
+            # Log widgets
+            "_log",
+            "_log_file_location",
+            "_save_log",
+            "_overwrite",
+            "_logbox",
+        ]:
+            safe_close_widget(name)
+
+        # Remove logger handlers owned by this instance.
+        logger = getattr(self, "_logger", None)
+        if logger is not None:
+            for handler in list(logger.handlers):
+                try:
+                    handler.close()
+                except Exception:
+                    pass
+                try:
+                    logger.removeHandler(handler)
+                except Exception:
+                    pass
+
+        # Close the StringIO log buffer.
+        log_buffer = getattr(self, "_log_capture_string", None)
+        if log_buffer is not None:
+            try:
+                log_buffer.close()
+            except Exception:
+                pass
+        self._log_capture_string = None
