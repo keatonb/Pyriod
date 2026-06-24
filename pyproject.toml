@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Pyriod"
-version = "0.3.9"
+version = "0.4.0"
 description = "Interactive prewhitening and sinusoidal fitting for astronomical time series"
 readme = "README.md"
 requires-python = ">=3.10"
