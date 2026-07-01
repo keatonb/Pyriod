@@ -498,15 +498,20 @@ class Pyriod(object):
     @property
     def lc_model(self):
         meanflux = float(np.nanmean(self.lc.flux.value))
-        return lk.LightCurve(time = self.lc.time,
-                            flux = (meanflux + self.sample_model(self.lc.time.value))
-                                                *self.lc.flux.unit)
+        lc = lk.LightCurve(time = self.lc.time,
+                           flux = (meanflux + self.sample_model(self.lc.time.value))
+                                               *self.lc.flux.unit)
+        lc["include"] = self.lc["include"]
+        return lc
+    
     @property
     def lc_resid(self):
         lc_model = self.lc_model
-        return lk.LightCurve(time = self.lc.time,
-                             flux = self.lc["flux"] - lc_model.flux,
-                             flux_err = self.lc["flux_err"]) # bad points dropped
+        lc = lk.LightCurve(time = self.lc.time,
+                           flux = self.lc["flux"] - lc_model.flux,
+                           flux_err = self.lc["flux_err"]) 
+        lc["include"] = self.lc["include"]
+        return lc
 
     def _init_viewport_model_plot(self):
         # Create the line once. Do not recreate it on every zoom/pan.
