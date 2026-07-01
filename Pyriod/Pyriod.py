@@ -373,9 +373,8 @@ class Pyriod(object):
 
         self.log("Pyriod object initialized.")
 
-        # Write lightkurve and periodogram properties to log
+        # Write lightkurve properties to log
         self._log_lc_properties()
-        self._log_per_properties()
 
         # Keep track whether the displayed data reflect the most recent fit
         self.uptodate = True
@@ -1032,14 +1031,17 @@ class Pyriod(object):
 
     def _log_lc_properties(self):
         """If lc has metadata, put it in the log."""
-        for key in self.lc.meta.keys():
-            self.log(f"{key}: {self.lc.meta[key]}")
+        keys = self.lc.meta.keys()
+        if len(keys) > 0:
+            self.log("The provided light curve has the following metadata:")
+            for key in keys:
+                self.log(f"{key}: {self.lc.meta[key]}")
 
-    def _log_per_properties(self):
+    def _log_per_properties(self, per):
         """Capture periodogram properties in log."""
         try:
             with Capturing() as output:
-                self.per_resid.show_properties()
+                per.show_properties()
             info = re.sub(' +', ' ',
                           str("".join([e+' |\n' for e in output[3:]])))
             self.log("Periodogram properties:" + info)
@@ -1871,12 +1873,13 @@ class Pyriod(object):
             # Periodogram of residuals
             resid = lk.LightCurve(time = self.lc.time[good],
                                   flux = self.lc["flux"][good] - modellc.flux) # bad points dropped
-            self.per_resid = (resid.to_periodogram(normalization='amplitude',
+            per_resid = resid.to_periodogram(normalization='amplitude',
                                                    freq_unit=self.freq_unit,
                                                    frequency=self.freqs, 
-                                                   ls_method=self.ls_method).power.value
-                                                   * self.amp_conversion)
-        self._log_per_properties()
+                                                   ls_method=self.ls_method)
+            self._log_per_properties(per_resid)
+            self.per_resid = per_resid.power.value * self.amp_conversion
+        
         # If auto-recalculate set for significance threshold:
         if self.gui:
             if self._sig_auto_recalculate.value:
