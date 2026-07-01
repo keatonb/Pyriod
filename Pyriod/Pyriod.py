@@ -466,7 +466,7 @@ class Pyriod(object):
             description='Display:',
             disabled=False
         )
-        self._tstype.observe(self._update_lc_display)
+        self._tstype.observe(self._update_and_rescale_lc_display)
 
         # Fold on frequency checkbox
         self._fold = widgets.Checkbox(
@@ -474,7 +474,7 @@ class Pyriod(object):
             step=self.fres,
             description='Fold time series on frequency?',
         )
-        self._fold.observe(self._update_lc_display)
+        self._fold.observe(self._update_and_rescale_lc_display)
 
         # Folding frequency
         self._fold_on = widgets.FloatText(
@@ -1778,6 +1778,11 @@ class Pyriod(object):
         """Change type of time series to display from dropdown."""
         self._display_lc(residuals=(self._tstype.value == "Residuals"))
 
+    def _update_and_rescale_lc_display(self, *args):
+        """Change type of time series to display from dropdown."""
+        self.log(str(*args))
+        self._display_lc(residuals=(self._tstype.value == "Residuals"),rescale=True)
+
     def _update_signal_markers(self):
         freqs = self.stagedvalues['freq'][self.stagedvalues.include].values
         amps = (self.stagedvalues['amp'].values[self.stagedvalues.include]
@@ -1794,7 +1799,7 @@ class Pyriod(object):
             self._combo_markers.set_data([], [])  # No markers
         self.perfig.canvas.draw_idle()
 
-    def _display_lc(self, residuals=False):
+    def _display_lc(self, residuals=False, rescale = False):
         lc = self.lc.copy()
         if residuals:
             good = np.where(self.lc["include"])
@@ -1804,24 +1809,27 @@ class Pyriod(object):
             self._update_sampled_model() # handles residuals
         else:
             self._update_sampled_model()
-        # Rescale y to better match data
-        good = np.where(self.lc["include"])
-        ymin = np.min(lc.flux[good].value)
-        ymax = np.max(lc.flux[good].value)
-        self.lcax.set_ylim(ymin-0.05*(ymax-ymin), ymax+0.05*(ymax-ymin))
+        # Rescale y to better match data 
+        if rescale:
+            good = np.where(self.lc["include"])
+            ymin = np.min(lc.flux[good].value)
+            ymax = np.max(lc.flux[good].value)
+            self.lcax.set_ylim(ymin-0.05*(ymax-ymin), ymax+0.05*(ymax-ymin))
+
         # Fold if requested
         if self._fold.value:
             xdata = lc.time.value*self._fold_on.value*self.freq_conversion % 1.
             self._lcplot_data.set_offsets(np.dstack((xdata, lc.flux.value))[0])
-            self.lcax.set_xlim(-0.01, 1.01)
+            self.lcax.set_xlim(-0.01, 1.01) 
             self._lcplot_model.set_alpha(0) # don't show model
         else:
             self._lcplot_data.set_offsets(np.dstack((lc.time.value,
                                                     lc.flux.value))[0])
             tspan = np.ptp(lc.time.value)
             self._lcplot_model.set_alpha(1) # show model
-            self.lcax.set_xlim(np.min(lc.time.value) - 0.01*tspan,
-                               np.max(lc.time.value) + 0.01*tspan)
+            if rescale:
+                self.lcax.set_xlim(np.min(lc.time.value) - 0.01*tspan,
+                                   np.max(lc.time.value) + 0.01*tspan)
         self._selector.update(self._lcplot_data)
         self._set_plot_labels()
         self.lcfig.canvas.draw_idle()
