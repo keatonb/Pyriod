@@ -494,6 +494,20 @@ class Pyriod(object):
         #html = gh_md_to_html.main(str(path), enable_image_downloading=False)
         #self._timeseries_readme = widgets.HTML(html)
 
+    # Class properties to ease access to model and residuals
+    @property
+    def lc_model(self):
+        meanflux = float(np.nanmean(self.lc.flux.value))
+        return lk.LightCurve(time = self.lc.time,
+                            flux = (meanflux + self.sample_model(self.lc.time.value))
+                                                *self.lc.flux.unit)
+    @property
+    def lc_resid(self):
+        lc_model = self.lc_model
+        return lk.LightCurve(time = self.lc.time,
+                             flux = self.lc["flux"] - lc_model.flux,
+                             flux_err = self.lc["flux_err"]) # bad points dropped
+
     def _init_viewport_model_plot(self):
         # Create the line once. Do not recreate it on every zoom/pan.
         self._lcplot_model, = self.lcax.plot([np.min(self.lc.time.value),np.max(self.lc.time.value)], 
