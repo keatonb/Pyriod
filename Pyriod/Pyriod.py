@@ -49,6 +49,7 @@ import ipywidgets as widgets
 from ipywidgets import HBox, VBox
 import qgridnext as qgrid
 from ipyfilechooser import FileChooser
+from traitlets.traitlets import TraitError
 
 # Local imports
 # from .pyquist import subfreq (not currently used)
@@ -2091,12 +2092,17 @@ class Pyriod(object):
             Time series plot, options, and information to be displayed.
         """
         if self.gui:
-            options = widgets.Accordion(children=[
-                VBox([self._tstype, self._fold, self._fold_on,
-                      self._select_fold_freq, self._reset_mask])], selected_index=None)
-            options.set_title(0, 'options')
-            savefig = HBox([self._save_tsfig, self._tsfig_file_location])
-            return VBox([self._status, self.lcfig.canvas, savefig, options])
+            try:
+                options = widgets.Accordion(children=[
+                    VBox([self._tstype, self._fold, self._fold_on,
+                        self._select_fold_freq, self._reset_mask])], selected_index=None)
+                options.set_title(0, 'options')
+                savefig = HBox([self._save_tsfig, self._tsfig_file_location])
+                return VBox([self._status, self.lcfig.canvas, savefig, options])
+            except TraitError as e:
+                # Add your custom contextual information here
+                e.add_note("You must use the ipympl plotting backend. Use magic command `%matplotlib widget`.")
+                raise
         else:
             print("GUI disabled.")
 
@@ -2109,36 +2115,41 @@ class Pyriod(object):
             Periodogram plot, options, and information to be displayed.
         """
         if self.gui:
-            # display config on left, sig threshold at right
-            displayconfig = VBox([self._snaptopeak,
-                                  self._show_per_markers,
-                                  self._show_per_orig,
-                                  self._show_per_resid,
-                                  self._show_per_model,
-                                  self._show_sig_threshold])
-            thresholdconfig = VBox([widgets.Label("Significance Threshold:"),
-                                    self._sig_multiplier_widget,
-                                    self._sig_startfreq_widget,
-                                    self._sig_endfreq_widget,
-                                    self._sig_freqstep_widget,
-                                    self._sig_winwidth_widget,
-                                    self._sig_avgtype_widget,
-                                    HBox([self._sig_extrapolate_widget,self._sig_auto_recalculate]),
-                                    self._sig_calculate_button],
-                                   layout=widgets.Layout(border='solid 1px'))
-            options = HBox([displayconfig, thresholdconfig])
-            accordians = widgets.Accordion(
-                children=[options],
-                selected_index=None)
-            accordians.set_title(0, 'options')
-            savefig = HBox([self._save_perfig, self._perfig_file_location])
-            periodogram = VBox([self._status,
-                                HBox([self._thisfreq, self._thisamp]),
-                                HBox([self._addtosol, self._refit]),
-                                self.perfig.canvas,
-                                savefig,
-                                accordians])
-            return periodogram
+            try:
+                # display config on left, sig threshold at right
+                displayconfig = VBox([self._snaptopeak,
+                                    self._show_per_markers,
+                                    self._show_per_orig,
+                                    self._show_per_resid,
+                                    self._show_per_model,
+                                    self._show_sig_threshold])
+                thresholdconfig = VBox([widgets.Label("Significance Threshold:"),
+                                        self._sig_multiplier_widget,
+                                        self._sig_startfreq_widget,
+                                        self._sig_endfreq_widget,
+                                        self._sig_freqstep_widget,
+                                        self._sig_winwidth_widget,
+                                        self._sig_avgtype_widget,
+                                        HBox([self._sig_extrapolate_widget,self._sig_auto_recalculate]),
+                                        self._sig_calculate_button],
+                                    layout=widgets.Layout(border='solid 1px'))
+                options = HBox([displayconfig, thresholdconfig])
+                accordians = widgets.Accordion(
+                    children=[options],
+                    selected_index=None)
+                accordians.set_title(0, 'options')
+                savefig = HBox([self._save_perfig, self._perfig_file_location])
+                periodogram = VBox([self._status,
+                                    HBox([self._thisfreq, self._thisamp]),
+                                    HBox([self._addtosol, self._refit]),
+                                    self.perfig.canvas,
+                                    savefig,
+                                    accordians])
+                return periodogram
+            except TraitError as e:
+                # Add your custom contextual information here
+                e.add_note("You must use the ipympl plotting backend. Use magic command `%matplotlib widget`.")
+                raise
         else:
             print("GUI disabled.")
 
