@@ -66,3 +66,30 @@ def test_gui_initializes_adds_fits_and_removes_one_signal(synthetic_lc):
     assert "f0" not in qgrid_df.index
 
     plt.close("all")
+
+# test with gui=False
+def test_core_gui_false_add_fit_delete(synthetic_lc):
+    from Pyriod import Pyriod
+
+    p = Pyriod(
+        synthetic_lc,
+        amp_unit="relative",
+        freq_unit="1/day",
+        gui=False,
+        minfreq=1,
+        maxfreq=10,
+        oversample_factor=10,
+    )
+
+    p.add_signal(freq=5.0, amp=0.0025, phase=0.1, index="f0")
+    p.fit_model()
+
+    assert p.fit_result is not None
+    assert "f0" in p.fitvalues.index
+    assert np.isfinite(p.fitvalues.loc["f0", "freq"])
+
+    p.delete_rows(["f0"])
+    assert "f0" not in p.stagedvalues.index
+
+def test_core_import_does_not_require_gui_stack():
+    import Pyriod.core
