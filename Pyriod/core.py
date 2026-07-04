@@ -933,11 +933,13 @@ class Prewhitener(object):
         else:
             self.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
 
-    def mask_indices(self, indices):
+    def mask_indices(self, indices, threshold=30):
+        self.log(f"Masking {len(indices)} selected points: "+
+                 f"{np.array2string(indices,threshold=threshold)}")
         self.lc["include"][indices] = 0
         self._mask_changed()
 
-    def clear_mask(self, _):
+    def clear_mask(self):
         self.log("Restoring all masked points.")
         self.lc["include"][:] = 1
         self._mask_changed()

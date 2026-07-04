@@ -1,7 +1,8 @@
 # Pyriod/plotsupport.py
 
 import numpy as np
-
+from matplotlib.widgets import LassoSelector
+import matplotlib.path  # for .Path
 
 def visible_range_indices(x, xmin, xmax):
     """Return index limits for the visible range of a sorted x array."""
@@ -93,3 +94,43 @@ def decimate_visible_range(x, y, xmin, xmax, max_points=30_000):
         y[lo:hi],
         max_points=max_points,
     )
+
+
+class lasso_selector(object):
+    """Select indices from a matplotlib collection using `LassoSelector`.
+
+    Highlight selected points with gold outline.
+
+    Based on Lasso Selector Demo
+    https://matplotlib.org/3.1.1/gallery/widgets/lasso_selector_demo_sgskip.html
+    """
+
+    def __init__(self, ax, collection, color='gold'):
+        self.canvas = ax.figure.canvas
+        self.collection = collection
+        self.color = color
+
+        self.xys = collection.get_offsets()
+        self.Npts = len(self.xys)
+
+        self.lasso = LassoSelector(ax, onselect=self.onselect)
+        self.ind = []
+
+    def onselect(self, verts):
+        path = matplotlib.path.Path(verts)
+        self.ind = np.nonzero(path.contains_points(self.xys))[0]
+
+        ec = np.array(["None" for i in range(self.Npts)])
+        ec[self.ind] = self.color
+        self.collection.set_edgecolors(ec)
+        self.canvas.draw_idle()
+
+    def update(self,collection):
+        self.collection = collection
+        self.xys = collection.get_offsets()
+
+    def disconnect(self):
+        self.lasso.disconnect_events()
+        ec = np.array(["None" for i in range(self.Npts)])
+        self.collection.set_edgecolors(ec)
+        self.canvas.draw_idle()

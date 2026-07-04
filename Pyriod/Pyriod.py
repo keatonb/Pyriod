@@ -43,8 +43,6 @@ from lmfit import Model, Parameters
 from bs4 import BeautifulSoup
 from bs4.builder import XMLParsedAsHTMLWarning
 import matplotlib.pyplot as plt
-from matplotlib.widgets import LassoSelector
-import matplotlib.path  # for .Path
 import ipywidgets as widgets
 from ipywidgets import HBox, VBox
 import qgridnext as qgrid
@@ -58,6 +56,7 @@ from .plotsupport import (
     decimate_visible_range,
     minmax_decimate,
     visible_range_indices,
+    lasso_selector
 )
 
 plt.ioff()  # Turn off interactive mode
@@ -89,46 +88,6 @@ class Capturing(list):
         self.extend(self._stringio.getvalue().splitlines())
         del self._stringio    # free up some memory
         sys.stdout = self._stdout
-
-
-class lasso_selector(object):
-    """Select indices from a matplotlib collection using `LassoSelector`.
-
-    Highlight selected points with gold outline.
-
-    Based on Lasso Selector Demo
-    https://matplotlib.org/3.1.1/gallery/widgets/lasso_selector_demo_sgskip.html
-    """
-
-    def __init__(self, ax, collection, color='gold'):
-        self.canvas = ax.figure.canvas
-        self.collection = collection
-        self.color = color
-
-        self.xys = collection.get_offsets()
-        self.Npts = len(self.xys)
-
-        self.lasso = LassoSelector(ax, onselect=self.onselect)
-        self.ind = []
-
-    def onselect(self, verts):
-        path = matplotlib.path.Path(verts)
-        self.ind = np.nonzero(path.contains_points(self.xys))[0]
-
-        ec = np.array(["None" for i in range(self.Npts)])
-        ec[self.ind] = self.color
-        self.collection.set_edgecolors(ec)
-        self.canvas.draw_idle()
-
-    def update(self,collection):
-        self.collection = collection
-        self.xys = collection.get_offsets()
-
-    def disconnect(self):
-        self.lasso.disconnect_events()
-        ec = np.array(["None" for i in range(self.Npts)])
-        self.collection.set_edgecolors(ec)
-        self.canvas.draw_idle()
 
 
 class Pyriod(object):
@@ -963,6 +922,7 @@ class Pyriod(object):
         self._logger = logging.getLogger(f'Pyriod Logger {self.id}')
         self._logger.setLevel(logging.DEBUG)
         self._log_capture_string = StringIO()
+        self._logger.propagate = False
         ch = logging.StreamHandler(self._log_capture_string)
         ch.setLevel(logging.DEBUG)
         formatter = logging.Formatter(
@@ -1804,7 +1764,7 @@ class Pyriod(object):
         if residuals:
             good = np.where(self.lc["include"])
             meanflux = float(np.mean(np.array(self.lc.flux.value[good])))
-            modellc = meanflux + self.sample_model(self.lc.time.value[good])*self.lc.flux.unit
+            modellc = meanflux + self.sample_model(self.lc.time.value)*self.lc.flux.unit
             lc.flux = self.lc["flux"] - modellc # this to be displayed
             self._update_sampled_model() # handles residuals
         else:
@@ -2674,3 +2634,7 @@ class Pyriod(object):
             except Exception:
                 pass
         self._log_capture_string = None
+
+        for handler in self._logger.handlers[:]:
+            handler.close()
+            self._logger.removeHandler(handler)
