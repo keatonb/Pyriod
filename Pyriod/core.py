@@ -170,6 +170,7 @@ class Prewhitener(object):
         self.significance_multiplier = None
         # Put above in an init function that takes window start/stops
 
+        self._lcchanged = False # initial state
         self.log("Pyriod object initialized.")
 
     ###### initialization functions #######
@@ -266,8 +267,8 @@ class Prewhitener(object):
     def uptodate(self):
         colcompare = [c for c in self.columns if c != "brute"]
         nobrute = all(~self.stagedvalues["brute"])
-        stagedisfit = (self.stagedvalues[colcompare].values == self.fitvalues[colcompare].values).all()
-        return bool(nobrute & stagedisfit)
+        stagedisfit = np.array_equal(self.stagedvalues[colcompare].values, self.fitvalues[colcompare].values)
+        return bool(nobrute and stagedisfit and not self._lcchanged)
 
     def _init_log(self):
         """Set up stuff needed for the Log."""
@@ -731,7 +732,8 @@ class Prewhitener(object):
             self.log("Fit refined.")
             self.log("Fit properties:"+self.fit_result.fit_report())
             self._update_values_from_fit(self.fit_result.params, prefixmap)
-
+        # up-to-date
+        self._lcchanged = False
         # Update lightcurves and periodograms for new residuals
         self.compute_pers()
 
@@ -931,14 +933,11 @@ class Prewhitener(object):
         else:
             self.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
 
+    def mask_indices(self, indices):
+        self.lc["include"][indices] = 0
+        self._mask_changed()
 
-    def _mask_selected_pts(self, event):
-        if ((event.key in ["backspace", "delete"]) and (len(self._selector.ind) > 0)):
-            self.log(f"Masking {len(self._selector.ind)} selected points.")
-            self.lc["include"][self._selector.ind] = 0
-            self._mask_changed()
-
-    def _clear_mask(self, b):
+    def clear_mask(self, _):
         self.log("Restoring all masked points.")
         self.lc["include"][:] = 1
         self._mask_changed()
@@ -946,6 +945,7 @@ class Prewhitener(object):
     def _mask_changed(self):
         self._calc_tshift()
         self.compute_pers(orig=True)
+        self._lcchanged = True
 
     def _calc_tshift(self, tshift=None):
         # Subtracting the mean time stabilizes phase fitting.
