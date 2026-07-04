@@ -1,3 +1,5 @@
+import numpy as np
+
 def make_all_iter(variables):
     """Return iterables of given variables.
 
@@ -22,3 +24,17 @@ def make_all_iter(variables):
         variables = [[v[0] for i in range(nvals)] if (len(v) == 1)
                         else v for v in variables]
     return tuple(variables)
+
+def _as_scalar_float(value):
+    """Convert scalar-like, length-1 array-like, or Quantity-like value to float."""
+    # Strip astropy Quantity if present
+    if hasattr(value, "value"):
+        value = value.value
+
+    # Convert numpy arrays/lists/scalars to ndarray, then flatten
+    arr = np.asarray(value).ravel()
+
+    if len(arr) != 1:
+        raise ValueError(f"Expected scalar or length-1 value, got shape {np.shape(value)}")
+
+    return float(arr[0])
