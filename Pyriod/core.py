@@ -285,7 +285,7 @@ class Prewhitener(object):
         self._logger.addHandler(ch)
         # Log the initialization of the Log.
         self.log(f'Initiating Pyriod instance {self.id}.')
-
+    
     def log(self, message, level='info'):
         """Record a message in the Log.
 
@@ -312,6 +312,15 @@ class Prewhitener(object):
         if message[:-2] != '\n':
             message += '\n'
         logdict[level](message)
+
+    @property
+    def get_log_html(self):
+        raw_log = self._log_capture_string.getvalue()
+        return ("<pre style='white-space: pre-wrap; "
+                "font-family: monospace; "
+                "margin: 0;'>"
+                f"{html.escape(raw_log)}"
+                "</pre>")
 
     def _log_lc_properties(self):
         """If lc has metadata, put it in the log."""
@@ -1143,7 +1152,8 @@ class Prewhitener(object):
         if overwrite:
             logmessage += ", overwriting."
         self.log(logmessage)
-        soup = BeautifulSoup(self._log.value, features="xml")
+        loghtml = self.get_log_html
+        soup = BeautifulSoup(loghtml, features="xml")
         mode = {True: "w+", False: "a+"}[overwrite]
         f = open(filename, mode)
         f.write(soup.get_text().replace('|', ''))

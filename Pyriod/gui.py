@@ -31,25 +31,17 @@ class PyriodGUI:
         # Create status widget to indicate when calculations are running
         self._status = widgets.HTML(value="")
 
-        # Figures first so the widgets can connect
-        #self._init_figures()
-        #self._init_widgets()
-
+        # Initiate things in the right order so connections can be made
         self._init_timeseries_widgets()
         self._init_timeseries_figures()
         self._init_periodogram_widgets()
         self._init_peridogram_figures()
+        self._init_log_widgets()
+
         #self.refresh_all()
 
 
     ## Initialize Widgets
-    def _init_widgets(self):
-        self._init_timeseries_widgets()
-        self._init_periodogram_widgets()
-        #self._init_signals_widgets()
-        #self._init_log_widgets()
-
-    
     def _init_timeseries_widgets(self):
         """Set up Time Series widgets."""
         # Plot location file chooser
@@ -265,10 +257,12 @@ class PyriodGUI:
         # Automatically recalculate sig threshold?
         self._sig_auto_recalculate = widgets.Checkbox(
             value = False,
-            description='Auto-recalculate',
+            description='XXX Auto-recalculate',
             style={'description_width': 'initial'},
             layout=widgets.Layout(width='100%')
         )
+        self._sig_auto_recalculate.observe(self._sigthreshfromgui)
+
         # Calulate sig threshold button
         self._sig_calculate_button = widgets.Button(
             description='Calculate',
@@ -277,13 +271,45 @@ class PyriodGUI:
         )
         self._sig_calculate_button.on_click(self._sigthreshfromgui)
 
+    def _init_log_widgets(self):
+        self._log = widgets.HTML(
+            value='Log',
+            placeholder='Log',
+            description='Log:',
+            layout={
+                'height': '250px',
+                'width': '950px',
+                'overflow_y': 'auto'
+            }
+        )
+        self.update_log()
 
+        # Save log location file chooser
+        self._log_file_location = FileChooser(
+            os.getcwd(),
+            filename='Pyriod_log.txt',
+            show_hidden=False,
+            select_default=True,
+            use_dir_icons=True,
+            show_only_dirs=False
+        )
+
+        # Save log button
+        self._save_log = widgets.Button(
+            description="Save",
+            disabled=False,
+            tooltip='Save log to csv file.',
+            icon='save'
+        )
+        self._save_log.on_click(self._save_log_button_click)
+
+        # Overwrite checkbox
+        self._overwrite = widgets.Checkbox(
+            value=False,
+            description='Overwrite?'
+        )
 
     ## Initialize figures
-    def _init_figures(self):
-        self._init_timeseries_figures()
-        self._init_peridogram_figures()
-
     def _init_timeseries_figures(self):
         self.lcfig, self.lcax = plt.subplots(
             figsize=(7, 2), num='Time Series ({:d})'.format(self.pw.id))
@@ -612,7 +638,21 @@ class PyriodGUI:
             e.add_note("You must use the ipympl plotting backend. Use magic command `%matplotlib widget`.")
             raise
 
+    def Log(self):
+        """Display the Pyriod Log cell in a Jupyter notebook.
 
+        Returns
+        -------
+        widget
+            Log of actions taken.
+        """
+                # Layout Log widgets
+        savelog = HBox([self._save_log,
+                    self._log_file_location,
+                    self._overwrite])
+        return VBox(
+            [widgets.Box([self._log]),
+             savelog])
 
     def Pyriod(self):
         """Display the interactive Pyriod suite in a Jupyter notebook.
@@ -628,13 +668,13 @@ class PyriodGUI:
         tstab = self.TimeSeries()
         pertab = self.Periodogram()
         #signalstab = self.Signals()
-        #logtab = self.Log()
+        logtab = self.Log()
         #tabs = widgets.Tab(children=[tstab, pertab, signalstab, logtab])
-        tabs = widgets.Tab(children=[tstab, pertab])
+        tabs = widgets.Tab(children=[tstab, pertab,logtab])
         tabs.set_title(0, 'Time Series')
         tabs.set_title(1, 'Periodogram')
         #tabs.set_title(2, 'Signals')
-        #tabs.set_title(3, 'Log')
+        tabs.set_title(2, 'Log') # change to 3
         return tabs
 
     # Functions for saving plots
@@ -688,10 +728,10 @@ class PyriodGUI:
     def _update_and_rescale_lc_display(self, *args):
         """Change type of time series to display from dropdown."""
         try:
-            self.pw.log(str(*args))
+            self.log(str(*args))
             self._display_lc(residuals=(self._tstype.value == "Residuals"),rescale=True)
         except Exception as e:
-            self.pw.log(f"Error caught: {e}","error")
+            self.log(f"Error caught: {e}","error")
 
     def _update_signal_markers(self):
         freqs = self.pw.stagedvalues['freq'][self.pw.stagedvalues.include].values
@@ -750,6 +790,25 @@ class PyriodGUI:
         if value['new'] is not None:
             self._fold_on.value = value['new']
 
+    def _update_freq_dropdown(self):
+        # Add new frequencies to dropdown options
+        labels = [self.pw.fitvalues.index[i]
+                  + ': {:.8f} '.format(self.pw.fitvalues.freq.iloc[i])
+                  + self.pw.freq_unit.to_string()
+                  for i in range(len(self.pw.fitvalues))]
+        currentind = self._select_fold_freq.index
+        if currentind is None:
+            currentind = 0
+        elif currentind >= len(labels):
+            currentind = len(labels)-1
+        if len(labels) == 0:
+            self._select_fold_freq.options = [None]
+        else:
+            self._select_fold_freq.options = zip(labels,
+                                                 self.fitvalues.freq.values)
+            self._select_fold_freq.index = currentind
+
+
     ## Functions for interacting with Prewhitener
     def _mask_selected_pts(self, event):
         if ((event.key in ["backspace", "delete"]) and (len(self._selector.ind) > 0)):
@@ -760,6 +819,7 @@ class PyriodGUI:
             self._lcplot_data.set_edgecolors("None")
             self._update_lc_display()
             self._update_per_plots()
+            self.update_log()
 
     def _clear_mask(self, _):
         self.pw.clear_mask()
@@ -769,6 +829,7 @@ class PyriodGUI:
         self._lcplot_data.set_edgecolors("None")
         self._update_lc_display()
         self._update_per_plots()
+        self.update_log()
 
     # Periodogram related functions
 
@@ -889,7 +950,8 @@ class PyriodGUI:
         elif self.pw._valid_combo(self._thisfreq.value):
             self.pw.add_combination(self._thisfreq.value)
         else:
-            self.pw.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
+            self.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
+        self.update_log()
 
     def fit_model(self, *args):
         """Fit model and update plots
@@ -898,16 +960,17 @@ class PyriodGUI:
         try:
             self._update_status()
             self.pw.fit_model()
+            self._update_freq_dropdown()
             self._update_lc_display()
             self._update_signal_markers()
             self._update_per_plots()
             self._mark_highest_peak()  # Mark highest peak in residuals
             #self._update_fit_report()
-
+            self.update_log()
             self._update_status(False)  # Calculation done
         except Exception as e:
             # Forcibly write the traceback to stderr so it displays
-            self.pw.log(f"Error caught: {e}","error")
+            self.log(f"Error caught: {e}","error")
 
 
     def _sigthreshfromgui(self, *args):
@@ -929,8 +992,19 @@ class PyriodGUI:
             self.pw._sig_threshold_power,
         )
         self.perfig.canvas.draw_idle()
-        
+    
+    ## Log functions
+    def update_log(self):
+        self._log.value = self.pw.get_log_html
+    
+    def log(self, message, level='info'):
+        # Write messsage to log and update log widget
+        self.pw.log(message, level=level)
+        self.update_log()
 
+    def _save_log_button_click(self, *args):
+        self.pw.save_log(self._log_file_location.selected, self._overwrite.value)
+        self.update_log()
 
     ## Properties for convenient access
     @property
