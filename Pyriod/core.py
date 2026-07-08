@@ -784,7 +784,6 @@ class Prewhitener(object):
         # Add SNRs too:
         self._update_signal_snr()
 
-
         tempdf = self._fitvalues.copy()
         tempdf["brute"] = False
         tempdf = tempdf.astype(
@@ -808,22 +807,8 @@ class Prewhitener(object):
         tempdf["amperr"] *= self.amp_conversion
         return tempdf
 
-    def _convert_qgrid_to_stagedvalues(self):
-        tempdf = (self._signals_qgrid.get_changed_df().copy()
-                  .astype(dtype=dict(zip(self.columns, self.dtypes))))
-        tempdf["amp"] /= self.amp_conversion
-        tempdf["amperr"] /= self.amp_conversion
-        return tempdf
-
-    def _update_stagedvalues_from_qgrid(self):
-        self.stagedvalues = self._convert_qgrid_to_stagedvalues()
-        self._update_signal_markers()
-
-    def _update_fit_report(self):
-        if self.fit_result is None:
-            self._fit_result_html.value = "No fit to report."
-        else:
-            self._fit_result_html.value = self.fit_result._repr_html_()
+    def _update_stagedvalues_from_qgrid(self, df):
+        self.stagedvalues = df
 
     def sample_model(self, time):
         """Sample the current best fit model at desired times.
@@ -845,32 +830,6 @@ class Prewhitener(object):
             phase = float(self._fitvalues.loc[prefix, 'phase'])
             flux += sin(time, freq*self.freq_conversion, amp, phase)
         return flux
-
-    def _qgrid_changed_manually(self, *args):
-        """Pass along manual changes to Signals table to."""
-        # Note: args has information about what changed if needed
-        newdf = self._signals_qgrid.get_changed_df()
-        olddf = self._signals_qgrid.df
-
-        logmessage = "Signals table changed manually.\n"
-
-        for key in newdf.index.values:
-            if key in olddf.index.values: # modified exitsting row
-                changes = newdf.loc[key][(olddf.loc[key] != newdf.loc[key])]
-                changes = changes.dropna()  # Remove nans
-                if len(changes) > 0:
-                    logmessage += f"Values changed for {key}:\n"
-                    for colname, new_value in changes.items():
-                        old_value = olddf.loc[key, colname]
-                        logmessage += f" - {colname}: {old_value} -> {new_value}\n"
-            else: #New row
-                logmessage += f"New row in solution table: {key}\n"
-                for colname, new_value in newdf.loc[key].items():
-                    logmessage += f" - {colname} -> {new_value}\n"
-
-        self.log(logmessage)
-        # Update plots only if signal values (not what is fixed) changed
-        self._update_stagedvalues_from_qgrid()
 
     # Column names and dtypes for tables
     columns = ['include', 'freq', 'fixfreq', 'freqerr',
@@ -918,7 +877,17 @@ class Prewhitener(object):
         
         self.log(f"Removed signals: {existing}")
         self.stagedvalues = self.stagedvalues.drop(existing)
-    
+
+        # Also delete associated combination frequencies
+        self._void_combos()
+
+    def _void_combos(self):
+        #remove all invalid combinations
+        isindep = lambda key: key[1:].isdigit()
+        depkeys = []
+        for key in self.stagedvalues.index:
+            if not isindep(key) and not self._valid_combo(key):
+                self.remove_signals(key)
 
     def _initialize_dataframe(self):
         """Create new empty signals dataframe."""
@@ -1128,11 +1097,12 @@ class Prewhitener(object):
         if os.path.exists(filename):
             loaddf = pd.read_csv(filename, index_col='label')
             loaddf.index = loaddf.index.rename(None)
+            loaddf["amp"] /= self.amp_conversion
+            loaddf["amperr"] /= self.amp_conversion
+            self.stagedvalues = loaddf
             logmessage = ("Loading signal solution from "
                           + os.path.abspath(filename) + ".\n")
             self.log(logmessage)
-            self._signals_qgrid.df = loaddf
-            self._update_stagedvalues_from_qgrid()
         else:
             self.log("Failed to load " + os.path.abspath(filename)
                      + ". File not found.\n", level='error')

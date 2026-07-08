@@ -36,6 +36,8 @@ class PyriodGUI:
         self._init_timeseries_figures()
         self._init_periodogram_widgets()
         self._init_peridogram_figures()
+        self._init_signals_qgrid()
+        self._init_signals_widgets()
         self._init_log_widgets()
 
         #self.refresh_all()
@@ -271,6 +273,122 @@ class PyriodGUI:
         )
         self._sig_calculate_button.on_click(self._sigthreshfromgui)
 
+    def _init_signals_qgrid(self):
+        """Define QGrid column properties."""
+        # Overall grid options
+        self._gridoptions = {
+            # SlickGrid options
+            'fullWidthRows': True,
+            'syncColumnCellResize': True,
+            'forceFitColumns': False,
+            'defaultColumnWidth': 65,  # col width (all the same)
+            'rowHeight': 28,
+            'enableColumnReorder': True,
+            'enableTextSelectionOnCells': True,
+            'editable': True,
+            'autoEdit': True,  # double-click not required!
+            'explicitInitialization': True,
+
+            # Qgrid options
+            'maxVisibleRows': 8,
+            'minVisibleRows': 8,
+            'sortable': True,
+            'filterable': False,  # Not useful here
+            'highlightSelectedCell': False,
+            'highlightSelectedRow': True
+             }
+
+        # Individual column options
+        self._column_definitions = {
+            "include":  {'width': 60,
+                         'toolTip': "include signal in model fit?"},
+            "freq":      {'width': 100, 'toolTip': "mode frequency"},
+            "fixfreq":  {'width': 60, 'toolTip': "fix frequency during fit?"},
+            "freqerr":  {'width': 90, 'toolTip': "uncertainty on frequency",
+                         'editable': False},
+            "amp":       {'width': 100, 'toolTip': "mode amplitude"},
+            "fixamp":   {'width': 60, 'toolTip': "fix amplitude during fit?"},
+            "amperr":  {'width': 90, 'toolTip': "uncertainty on amplitude",
+                        'editable': False},
+            "phase":     {'width': 100, 'toolTip': "mode phase"},
+            "brute": {'width': 65,
+                      'toolTip': "brute sample phase first during fit?"},
+            "fixphase": {'width': 65, 'toolTip': "fix phase during fit?"},
+            "phaseerr":  {'width': 90, 'toolTip': "uncertainty on phase",
+                          'editable': False}}
+        
+
+        self._signals_qgrid = self._get_qgrid()
+        self._signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
+        self._init_signals_widgets()
+
+    def _get_qgrid(self):
+        display_df = self.pw.stagedvalues.copy()
+        display_df["amp"] *= self.pw.amp_conversion
+        display_df["amperr"] *= self.pw.amp_conversion
+        return qgrid.show_grid(display_df, show_toolbar=False, precision=9,
+                               grid_options=self._gridoptions,
+                               column_definitions=self._column_definitions)
+
+    def _init_signals_widgets(self):
+        """Set up Signals widgets."""
+        # Button to compute best fit
+        self._refit = widgets.Button(
+            description="Refine fit",
+            disabled=False,
+            tooltip='Refine fit of signals to time series',
+            icon='refresh'
+        )
+        self._refit.on_click(self.fit_model)
+
+        # Button to delete selected signal rows
+        self._delete = widgets.Button(
+            description='Delete selected',
+            disabled=False,
+            button_style='danger',
+            tooltip='Delete selected rows.',
+            icon='trash'
+        )
+        self._delete.on_click(self._delete_selected)
+
+        # Save signals file chooser
+        self._signals_file_location = FileChooser(
+            os.getcwd(),
+            filename='Pyriod_solution.csv',
+            show_hidden=False,
+            select_default=True,
+            use_dir_icons=True,
+            show_only_dirs=False
+        )
+
+        # Save signals table as csv file
+        self._save = widgets.Button(
+            description="Save",
+            disabled=False,
+            tooltip='Save solution to csv file.',
+            icon='save'
+        )
+        self._save.on_click(self._save_button_click)
+
+        # Load signals from a csv file
+        self._load = widgets.Button(
+            description="Load",
+            disabled=False,
+            tooltip='Load solution from csv file.',
+            icon='load'
+        )
+        self._load.on_click(self._load_button_click)
+
+        # HTML widget to display fit result details
+        self._fit_result_html = widgets.HTML(" ")
+        self._update_fit_report()  # No fit to report
+
+        # HTML widget to display Readme
+        #path = Path(__file__).parent / 'docs/Signals.md'
+        #html = gh_md_to_html.main(str(path), enable_image_downloading=False)
+        #self._signals_readme = widgets.HTML(html)
+
+
     def _init_log_widgets(self):
         self._log = widgets.HTML(
             value='Log',
@@ -430,7 +548,6 @@ class PyriodGUI:
         n = min(n, self.max_model_plot_points)
 
         return np.linspace(xmin, xmax, n)
-
 
     def _init_peridogram_figures(self):
         self.perfig, self.perax = plt.subplots(
@@ -638,6 +755,26 @@ class PyriodGUI:
             e.add_note("You must use the ipympl plotting backend. Use magic command `%matplotlib widget`.")
             raise
 
+    def Signals(self):
+        """Display the interactive Signals cell in a Jupyter notebook.
+
+        Returns
+        -------
+        widget
+            Signals table, fit report, and other information to be displayed.
+        """
+        fitreport = widgets.Accordion(
+            children=[self._fit_result_html],
+            selected_index=None)
+        fitreport.set_title(0, 'fit report')
+        return VBox([self._status,
+                        HBox([self._refit, self._thisfreq, self._thisamp,
+                            self._addtosol, self._delete]),
+                        self._signals_qgrid,
+                        HBox([self._save, self._load,
+                            self._signals_file_location]),
+                        fitreport])
+
     def Log(self):
         """Display the Pyriod Log cell in a Jupyter notebook.
 
@@ -667,14 +804,13 @@ class PyriodGUI:
         """
         tstab = self.TimeSeries()
         pertab = self.Periodogram()
-        #signalstab = self.Signals()
+        signalstab = self.Signals()
         logtab = self.Log()
-        #tabs = widgets.Tab(children=[tstab, pertab, signalstab, logtab])
-        tabs = widgets.Tab(children=[tstab, pertab,logtab])
+        tabs = widgets.Tab(children=[tstab, pertab, signalstab, logtab])
         tabs.set_title(0, 'Time Series')
         tabs.set_title(1, 'Periodogram')
-        #tabs.set_title(2, 'Signals')
-        tabs.set_title(2, 'Log') # change to 3
+        tabs.set_title(2, 'Signals')
+        tabs.set_title(3, 'Log')
         return tabs
 
     # Functions for saving plots
@@ -727,11 +863,8 @@ class PyriodGUI:
 
     def _update_and_rescale_lc_display(self, *args):
         """Change type of time series to display from dropdown."""
-        try:
-            self.log(str(*args))
-            self._display_lc(residuals=(self._tstype.value == "Residuals"),rescale=True)
-        except Exception as e:
-            self.log(f"Error caught: {e}","error")
+        self.log(str(*args))
+        self._display_lc(residuals=(self._tstype.value == "Residuals"),rescale=True)
 
     def _update_signal_markers(self):
         freqs = self.pw.stagedvalues['freq'][self.pw.stagedvalues.include].values
@@ -832,7 +965,6 @@ class PyriodGUI:
         self.update_log()
 
     # Periodogram related functions
-
     def _update_marker(self, x, y):
         # Move the signal marker to the currently selected periodogram peak.
         x = _as_scalar_float(x)
@@ -942,36 +1074,35 @@ class PyriodGUI:
                 np.interp(event.xdata, self.pw.freqs, self.pw.per_resid),
             )
 
+    ## Fitting things
     def _add_staged_signal(self, *args):
         """Add signal to set of signals to fit."""
         # Is this a valid numeric frequency?
         if self._thisfreq.value.replace('.', '', 1).isdigit():
             self.pw.add_signal(float(self._thisfreq.value), self._thisamp.value)
+            self._update_signals_qgrid()
         elif self.pw._valid_combo(self._thisfreq.value):
             self.pw.add_combination(self._thisfreq.value)
+            self._update_signals_qgrid()
         else:
-            self.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
+            self.pw.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
         self.update_log()
 
     def fit_model(self, *args):
         """Fit model and update plots
         """
         # Indicate that a calculation is running
-        try:
-            self._update_status()
-            self.pw.fit_model()
-            self._update_freq_dropdown()
-            self._update_lc_display()
-            self._update_signal_markers()
-            self._update_per_plots()
-            self._mark_highest_peak()  # Mark highest peak in residuals
-            #self._update_fit_report()
-            self.update_log()
-            self._update_status(False)  # Calculation done
-        except Exception as e:
-            # Forcibly write the traceback to stderr so it displays
-            self.log(f"Error caught: {e}","error")
-
+        self._update_status()
+        self.pw.fit_model()
+        self._update_freq_dropdown()
+        self._update_lc_display()
+        self._update_signal_markers()
+        self._update_per_plots()
+        self._mark_highest_peak()  # Mark highest peak in residuals
+        self._update_signals_qgrid()
+        self._update_fit_report()
+        self.update_log()
+        self._update_status(False)  # Calculation done
 
     def _sigthreshfromgui(self, *args):
         # Compute significance threshold from GUI widget values
@@ -993,6 +1124,77 @@ class PyriodGUI:
         )
         self.perfig.canvas.draw_idle()
     
+    def _update_fit_report(self):
+        if self.pw.fit_result is None:
+            self._fit_result_html.value = "No fit to report."
+        else:
+            self._fit_result_html.value = self.pw.fit_result._repr_html_()
+
+    def _update_signals_qgrid(self):
+        displayframe = self.pw.stagedvalues.copy()
+        displayframe["amp"] = displayframe["amp"] * self.pw.amp_conversion
+        self._signals_qgrid.df = displayframe # Update qgrid displayed values
+
+    def _qgrid_changed_manually(self, *args):
+        """Pass along manual changes to Signals table to."""
+        # Note: args has information about what changed if needed
+        newdf = self._signals_qgrid.get_changed_df()
+        olddf = self._signals_qgrid.df
+
+        logmessage = "Signals table changed manually.\n"
+
+        for key in newdf.index.values:
+            if key in olddf.index.values: # modified exitsting row
+                changes = newdf.loc[key][(olddf.loc[key] != newdf.loc[key])]
+                changes = changes.dropna()  # Remove nans
+                if len(changes) > 0:
+                    logmessage += f"Values changed for {key}:\n"
+                    for colname, new_value in changes.items():
+                        old_value = olddf.loc[key, colname]
+                        logmessage += f" - {colname}: {old_value} -> {new_value}\n"
+            else: #New row
+                logmessage += f"New row in solution table: {key}\n"
+                for colname, new_value in newdf.loc[key].items():
+                    logmessage += f" - {colname} -> {new_value}\n"
+
+        self.pw.log(logmessage)
+        # Update plots only if signal values (not what is fixed) changed
+        self.pw._update_stagedvalues_from_qgrid(self._convert_qgrid_to_stagedvalues())
+
+    def _convert_qgrid_to_stagedvalues(self):
+        tempdf = (self._signals_qgrid.get_changed_df().copy()
+                  .astype(dtype=dict(zip(self.pw.columns, self.pw.dtypes))))
+        tempdf["amp"] /= self.pw.amp_conversion
+        tempdf["amperr"] /= self.pw.amp_conversion
+        return tempdf
+
+    def _delete_selected(self, *args):
+        """Delete signals corresponding to Qgrid rows."""
+        try:
+            indices = self._signals_qgrid.get_selected_df().index
+            existing = [idx for idx in indices if idx in self.pw.stagedvalues.index]
+            if not existing:
+                return
+            self.pw.remove_signals(indices)
+            # Remove from qgrid
+            ########### THIS MISSES THE INVALIDATED COMBINATIONS
+            self._signals_qgrid.df = (
+                self._signals_qgrid.get_changed_df().drop(existing))
+            
+            self._update_signals_qgrid()
+            self.update_log()
+        except Exception as e:
+            self.log(f"Error caught: {e}","error")
+
+    def _save_button_click(self, *args):
+        self.pw.save_solution(filename=self._signals_file_location.selected)
+        self.update_log()
+    
+    def _load_button_click(self, *args):
+        self.pw.load_solution(filename=self._signals_file_location.selected)
+        self._update_signals_qgrid()
+        self.update_log()
+
     ## Log functions
     def update_log(self):
         self._log.value = self.pw.get_log_html
