@@ -320,7 +320,6 @@ class PyriodGUI:
 
         self._signals_qgrid = self._get_qgrid()
         self._signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
-        self._init_signals_widgets()
 
     def _get_qgrid(self):
         display_df = self.pw.stagedvalues.copy()
@@ -944,7 +943,7 @@ class PyriodGUI:
             self._select_fold_freq.options = [None]
         else:
             self._select_fold_freq.options = zip(labels,
-                                                 self.fitvalues.freq.values)
+                                                 self.pw.fitvalues.freq.values)
             self._select_fold_freq.index = currentind
 
 
@@ -964,7 +963,7 @@ class PyriodGUI:
         self.pw.clear_mask()
         self._selector.ind = []
         self._lcplot_data.set_facecolors([self._lc_colors[m]
-                                         for m in self.lc["include"]])
+                                         for m in self.pw.lc["include"]])
         self._lcplot_data.set_edgecolors("None")
         self._update_lc_display()
         self._update_per_plots()
@@ -1172,7 +1171,7 @@ class PyriodGUI:
 
         self.pw.log(logmessage)
         # Update plots only if signal values (not what is fixed) changed
-        self.pw._update_stagedvalues_from_qgrid(self._convert_qgrid_to_stagedvalues())
+        self.pw._set_stagedvalues(self._convert_qgrid_to_stagedvalues())
 
     def _convert_qgrid_to_stagedvalues(self):
         tempdf = (self._signals_qgrid.get_changed_df().copy()

@@ -21,7 +21,6 @@ import re
 import logging
 import warnings
 import html
-from pathlib import Path
 if sys.version_info < (3, 0):
     from StringIO import StringIO
 else:
@@ -32,7 +31,6 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 import astropy.units as u
-from astropy.timeseries import TimeSeries
 import lightkurve as lk
 from lmfit import Model, Parameters
 from bs4 import BeautifulSoup
@@ -808,7 +806,7 @@ class Prewhitener(object):
         tempdf["amperr"] *= self.amp_conversion
         return tempdf
 
-    def _update_stagedvalues_from_qgrid(self, df):
+    def _set_stagedvalues(self, df):
         self.stagedvalues = df
 
     def sample_model(self, time):
@@ -895,23 +893,7 @@ class Prewhitener(object):
         df = (pd.DataFrame(columns=self.columns)
               .astype(dtype=dict(zip(self.columns, self.dtypes))))
         return df
-
-    # Light curve folding stuff
-    def _fold_freq_selected(self, value):
-        # New frequency value selected to fold on
-        if value['new'] is not None:
-            self._fold_on.value = value['new']
-
-    def _add_staged_signal(self, *args):
-        """Add signal to set of signals to fit."""
-        # Is this a valid numeric frequency?
-        if self._thisfreq.value.replace('.', '', 1).isdigit():
-            self.add_signal(float(self._thisfreq.value), self._thisamp.value)
-        elif self._valid_combo(self._thisfreq.value):
-            self.add_combination(self._thisfreq.value)
-        else:
-            self.log(f"Staged frequency has invalid format: {self._thisfreq.value}", "error")
-
+    
     def mask_indices(self, indices, threshold=30):
         self.log(f"Masking {len(indices)} selected points: "+
                  f"{np.array2string(indices,threshold=threshold)}")
@@ -1083,16 +1065,6 @@ class Prewhitener(object):
                                                 winwidth=ss["winwidth"],
                                                 avgtype=ss["avgtype"],
                                                 autorecalculate=ss["autorecalculate"])
-
-    def _update_log(self):
-        raw_log = self._log_capture_string.getvalue()
-        self._log.value = (
-            "<pre style='white-space: pre-wrap; "
-            "font-family: monospace; "
-            "margin: 0;'>"
-            f"{html.escape(raw_log)}"
-            "</pre>"
-        )
 
     def save_solution(self, filename='Pyriod_solution.csv'):
         """Save current signal solution as csv file.
