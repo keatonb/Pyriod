@@ -159,16 +159,17 @@ class Prewhitener(object):
         # Establish frequency sampling
         self.set_frequency_sampling(**kwargs)
 
-        ### PERIODOGRAM ###
-        self.compute_pers(orig=True) # Compute all periodograms
-
-        # Significance threshold init as None
-        # Noise spectrum interpolates average noise
-        # Significance multiplier scales this up for significance threshold
+        # Significance threshold attributes
         # TODO: take init arguments to define significance threshold
         self.noise_spectrum = None
         self.significance_multiplier = None
-        # Put above in an init function that takes window start/stops
+        self.significance_settings = None
+        self.autorecalculate = False
+
+        # Compute initial periodograms
+        self.compute_pers(orig=True) 
+
+        
 
         self._lcchanged = False # initial state
         self.log("Pyriod object initialized.")
@@ -977,16 +978,13 @@ class Prewhitener(object):
             self._log_per_properties(per_resid)
             self.per_resid = per_resid.power.value * self.amp_conversion
         
-        # If auto-recalculate set for significance threshold:
-        # TODO: if autorecalculate attribute, then recalculate (but not from GUI)
-        #if self.gui & self._sig_auto_recalculate.value:
-        #        self._sigthreshfromgui()
-        #self._update_status(False)  # Calculation complete
+        self._recalculate_significance_threshold()
 
 
     def calculate_significance_threshold(self, multiplier=5, startfreq=0,
                                          endfreq=None, freqstep=100,
                                          winwidth=100, avgtype="mean",
+                                         autorecalculate = False,
                                          **kwargs):
         """
         Calculate amplitude threshold for considering a signal to be
@@ -1014,6 +1012,9 @@ class Prewhitener(object):
             Width of averaging window in frequency units. The default is 100.
         avgtype : str, optional
             "mean" or "median". The default is "mean".
+        autorecalculate : bool, optional
+            recalculate threshold with these settings each time periodogram changes.
+            
         **kwargs :
             keyword arguments passed to interpolate function. `fill_value`
             determines how or whether to extrapolate beyond sampled frequency
@@ -1024,6 +1025,14 @@ class Prewhitener(object):
         None.
 
         """
+        # Store arguments for reference or recalculation
+        self.significance_settings = {"multiplier":multiplier, 
+                                      "startfreq":startfreq,
+                                      "endfreq":endfreq,
+                                      "freqstep":freqstep,
+                                      "winwidth":winwidth,
+                                      "avgtype":avgtype,
+                                      "autorecalculate":autorecalculate}
 
         if endfreq is None:
             endfreq = np.max(self.freqs)
@@ -1061,6 +1070,19 @@ class Prewhitener(object):
 
         # Update SNR of fitted signals
         self._update_signal_snr()
+
+    def _recalculate_significance_threshold(self):
+        if (self.autorecalculate & (self.noise_spectrum is not None) &
+                                   (self.significance_multiplier is not None) &
+                                   (self.significance_settings is not None)):
+            ss = self.significance_settings
+            self.calculate_significance_threshold(multiplier=ss["multiplier"], 
+                                                startfreq=ss["startfreq"],
+                                                endfreq=ss["endfreq"],
+                                                freqstep=ss["freqstep"],
+                                                winwidth=ss["winwidth"],
+                                                avgtype=ss["avgtype"],
+                                                autorecalculate=ss["autorecalculate"])
 
     def _update_log(self):
         raw_log = self._log_capture_string.getvalue()

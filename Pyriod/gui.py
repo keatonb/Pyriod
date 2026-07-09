@@ -259,11 +259,11 @@ class PyriodGUI:
         # Automatically recalculate sig threshold?
         self._sig_auto_recalculate = widgets.Checkbox(
             value = False,
-            description='XXX Auto-recalculate',
+            description='Auto-recalculate',
             style={'description_width': 'initial'},
             layout=widgets.Layout(width='100%')
         )
-        self._sig_auto_recalculate.observe(self._sigthreshfromgui)
+        self._sig_auto_recalculate.observe(self._sig_thresh_change_auto)
 
         # Calulate sig threshold button
         self._sig_calculate_button = widgets.Button(
@@ -271,7 +271,7 @@ class PyriodGUI:
             tooltip="Calculate new sigificance threshold.",
             style={'description_width': 'initial'}
         )
-        self._sig_calculate_button.on_click(self._sigthreshfromgui)
+        self._sig_calculate_button.on_click(self._sig_thresh_from_gui)
 
     def _init_signals_qgrid(self):
         """Define QGrid column properties."""
@@ -632,20 +632,26 @@ class PyriodGUI:
 
     def _request_periodogram_plot_update(self, ax=None):
         """Request a debounced periodogram redraw."""
-
         self._periodogram_update_timer.stop()
         self._periodogram_update_timer.start()
 
 
     def _update_per_plots(self):
         """Update periodogram plot data after periodograms are recomputed."""
-
         self._last_periodogram_xlim = None
         self._request_periodogram_plot_update()
+        # Update significance threshold
+        # update plot
+        if ((self.pw.noise_spectrum is not None) & (self.pw.significance_multiplier is not None) &
+                                                    (self.pw.significance_settings is not None)):
+            self._sig_threshold_plot.set_data(
+                self.pw._sig_threshold_freqs,
+                self.pw._sig_threshold_power,
+            )
+            self.perfig.canvas.draw_idle()
 
     def _refresh_periodogram_lines_from_view(self):
         """Display only a decimated version of the visible frequency range."""
-
         x0, x1 = self.perax.get_xlim()
         xmin, xmax = sorted((x0, x1))
 
@@ -1104,26 +1110,33 @@ class PyriodGUI:
         self.update_log()
         self._update_status(False)  # Calculation done
 
-    def _sigthreshfromgui(self, *args):
-        # Compute significance threshold from GUI widget values
-        fill_value = np.nan
-        if self._sig_extrapolate_widget.value:
-            fill_value = 'extrapolate'
-        self.pw.calculate_significance_threshold(
-            self._sig_multiplier_widget.value,
-            self._sig_startfreq_widget.value,
-            self._sig_endfreq_widget.value,
-            self._sig_freqstep_widget.value,
-            self._sig_winwidth_widget.value,
-            self._sig_avgtype_widget.value,
-            fill_value = fill_value)    
-        # update plot
-        self._sig_threshold_plot.set_data(
-            self.pw._sig_threshold_freqs,
-            self.pw._sig_threshold_power,
-        )
-        self.perfig.canvas.draw_idle()
+    def _sig_thresh_from_gui(self, *args):
+        try:
+            # Compute significance threshold from GUI widget values
+            fill_value = np.nan
+            if self._sig_extrapolate_widget.value:
+                fill_value = 'extrapolate'
+            self.pw.calculate_significance_threshold(
+                multiplier=self._sig_multiplier_widget.value,
+                startfreq=self._sig_startfreq_widget.value,
+                endfreq=self._sig_endfreq_widget.value,
+                freqstep=self._sig_freqstep_widget.value,
+                winwidth=self._sig_winwidth_widget.value,
+                avgtype=self._sig_avgtype_widget.value,
+                autorecalculate=self._sig_auto_recalculate.value)
+            # update plot
+            self._sig_threshold_plot.set_data(
+                self.pw._sig_threshold_freqs,
+                self.pw._sig_threshold_power,
+            )
+            self.perfig.canvas.draw_idle()
+        except Exception as e:
+            self.pw.log(f"Error caught: {e}","error")
+            self.update_log()
     
+    def _sig_thresh_change_auto(self, *args):
+        self.pw.autorecalculate = self._sig_auto_recalculate.value
+
     def _update_fit_report(self):
         if self.pw.fit_result is None:
             self._fit_result_html.value = "No fit to report."
@@ -1170,21 +1183,19 @@ class PyriodGUI:
 
     def _delete_selected(self, *args):
         """Delete signals corresponding to Qgrid rows."""
-        try:
-            indices = self._signals_qgrid.get_selected_df().index
-            existing = [idx for idx in indices if idx in self.pw.stagedvalues.index]
-            if not existing:
-                return
-            self.pw.remove_signals(indices)
-            # Remove from qgrid
-            ########### THIS MISSES THE INVALIDATED COMBINATIONS
-            self._signals_qgrid.df = (
-                self._signals_qgrid.get_changed_df().drop(existing))
-            
-            self._update_signals_qgrid()
-            self.update_log()
-        except Exception as e:
-            self.log(f"Error caught: {e}","error")
+        indices = self._signals_qgrid.get_selected_df().index
+        existing = [idx for idx in indices if idx in self.pw.stagedvalues.index]
+        if not existing:
+            return
+        self.pw.remove_signals(indices)
+        # Remove from qgrid
+        ########### THIS MISSES THE INVALIDATED COMBINATIONS
+        self._signals_qgrid.df = (
+            self._signals_qgrid.get_changed_df().drop(existing))
+        
+        self._update_signals_qgrid()
+        self.update_log()
+        
 
     def _save_button_click(self, *args):
         self.pw.save_solution(filename=self._signals_file_location.selected)
