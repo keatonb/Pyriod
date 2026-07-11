@@ -797,14 +797,20 @@ class Prewhitener(object):
                 self.amp_conversion * self._fitvalues['amp'] /
                 self.noise_spectrum(self._fitvalues['freq']))
 
-    def _convert_fitvalues_to_qgrid(self):
-        tempdf = self._fitvalues.copy()
-        tempdf["brute"] = False
-        tempdf = tempdf.astype(
-            dtype=dict(zip(self.columns, self.dtypes)))[self.columns]
-        tempdf["amp"] *= self.amp_conversion
-        tempdf["amperr"] *= self.amp_conversion
-        return tempdf
+    def solution_table(self, display_units=True, include_brute=True):
+        table = self._fitvalues.copy()
+
+        if include_brute:
+            table["brute"] = False
+            table = table.astype(
+                dtype=dict(zip(self.columns, self.dtypes))
+            )[self.columns]
+
+        if display_units:
+            table["amp"] *= self.amp_conversion
+            table["amperr"] *= self.amp_conversion
+
+        return table
 
     def _set_stagedvalues(self, df):
         self.stagedvalues = df
@@ -879,6 +885,10 @@ class Prewhitener(object):
 
         # Also delete associated combination frequencies
         self._void_combos()
+    
+    def delete_rows(self, indices):
+        """Backward-compatible alias for remove_signals()."""
+        return self.remove_signals(indices)
 
     def _void_combos(self):
         #remove all invalid combinations
@@ -1076,7 +1086,7 @@ class Prewhitener(object):
             'Pyriod_solution.csv'.
         """
         self.log("Writing signal solution to " + os.path.abspath(filename))
-        self._convert_fitvalues_to_qgrid().to_csv(filename,
+        self.solution_table(display_units=True).to_csv(filename,
                                                   index_label='label')
 
     def load_solution(self, filename='Pyriod_solution.csv'):

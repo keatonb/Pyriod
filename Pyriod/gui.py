@@ -322,7 +322,7 @@ class PyriodGUI:
         self._signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
 
     def _get_qgrid(self):
-        display_df = self.pw.stagedvalues.copy()
+        display_df = self.pw.solution_table(display_units=True, include_brute=True)
         display_df["amp"] *= self.pw.amp_conversion
         display_df["amperr"] *= self.pw.amp_conversion
         return qgrid.show_grid(display_df, show_toolbar=False, precision=9,
@@ -331,15 +331,6 @@ class PyriodGUI:
 
     def _init_signals_widgets(self):
         """Set up Signals widgets."""
-        # Button to compute best fit
-        self._refit = widgets.Button(
-            description="Refine fit",
-            disabled=False,
-            tooltip='Refine fit of signals to time series',
-            icon='refresh'
-        )
-        self._refit.on_click(self.fit_model)
-
         # Button to delete selected signal rows
         self._delete = widgets.Button(
             description='Delete selected',

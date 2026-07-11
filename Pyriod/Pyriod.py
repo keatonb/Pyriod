@@ -13,7 +13,6 @@ This main Pyriod class can make both, if requested.
 """
 
 from .core import Prewhitener
-from .gui import PyriodGUI
 
 class Pyriod:
     def __init__(self, *args, gui=True, **kwargs):
@@ -21,6 +20,7 @@ class Pyriod:
         self.gui = gui
         self._gui = None
         if gui:
+            from .gui import PyriodGUI
             self._gui = PyriodGUI(self.pw)
             
     def __getattr__(self, name):
