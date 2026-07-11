@@ -21,3 +21,10 @@ def test_rejects_function_calls():
 def test_validate_combination():
     assert validate_combination("f0+f1", {"f0", "f1"})
     assert not validate_combination("f0+unknown", {"f0", "f1"})
+
+
+def test_rejects_unknown_symbol():
+    values = {"f0": 10.0, "f1": 2.0}
+
+    with pytest.raises(ValueError, match="Unknown signal label"):
+        evaluate_combination("f0 + f2", values)

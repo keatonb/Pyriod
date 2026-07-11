@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Pyriod"
-version = "0.4.1"
+version = "0.5.0"
 description = "Interactive prewhitening and sinusoidal fitting for astronomical time series"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -61,6 +61,12 @@ dev = [
   "build",
   "twine",
   "ruff",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "gui: tests requiring notebook GUI dependencies",
+    "slow: tests that are useful but not run by default"
 ]
 
 [project.urls]

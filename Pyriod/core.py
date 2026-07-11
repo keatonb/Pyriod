@@ -905,6 +905,10 @@ class Prewhitener(object):
         return df
     
     def mask_indices(self, indices, threshold=30):
+        indices = np.asarray(indices, dtype=int)
+        if indices.size == 0:
+            self.log("No points provided to be masked.", level="warning")
+            return
         self.log(f"Masking {len(indices)} selected points: "+
                  f"{np.array2string(indices,threshold=threshold)}")
         self.lc["include"][indices] = 0

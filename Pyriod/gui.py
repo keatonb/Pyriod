@@ -39,9 +39,7 @@ class PyriodGUI:
         self._init_signals_qgrid()
         self._init_signals_widgets()
         self._init_log_widgets()
-
-        #self.refresh_all()
-
+        self._refresh_from_prewhitener()
 
     ## Initialize Widgets
     def _init_timeseries_widgets(self):
@@ -323,8 +321,6 @@ class PyriodGUI:
 
     def _get_qgrid(self):
         display_df = self.pw.solution_table(display_units=True, include_brute=True)
-        display_df["amp"] *= self.pw.amp_conversion
-        display_df["amperr"] *= self.pw.amp_conversion
         return qgrid.show_grid(display_df, show_toolbar=False, precision=9,
                                grid_options=self._gridoptions,
                                column_definitions=self._column_definitions)
@@ -695,6 +691,21 @@ class PyriodGUI:
 
         line.set_data(xplot, yplot)
 
+    def _refresh_from_prewhitener(self):
+        """Refresh GUI displays from the current Prewhitener state."""
+        self._update_freq_dropdown()
+
+        self._update_lc_display()
+        self._refresh_model_line_from_view()
+
+        self._refresh_periodogram_lines_from_view()
+        self._update_signal_markers()
+        self._display_per_markers()
+        self._mark_highest_peak()
+
+        self._update_signals_qgrid()
+        self._update_fit_report()
+        self.update_log()
 
     ## Main Widget collections
     def TimeSeries(self):
@@ -1149,6 +1160,7 @@ class PyriodGUI:
     def _update_signals_qgrid(self):
         displayframe = self.pw.stagedvalues.copy()
         displayframe["amp"] = displayframe["amp"] * self.pw.amp_conversion
+        displayframe["amperr"] = displayframe["amperr"] * self.pw.amp_conversion
         self._signals_qgrid.df = displayframe # Update qgrid displayed values
 
     def _qgrid_changed_manually(self, *args):
