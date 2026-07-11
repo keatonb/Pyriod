@@ -23,10 +23,10 @@ class PyriodGUI:
     """Interactive widgets and plots for prewhitening.
     
     This object owns the display/interaction elements.
-    Must be connected to a pw = Prewhitener object.
+    Must be connected to a prewhitener = Prewhitener object.
     """
-    def __init__(self, pw):
-        self.pw = pw
+    def __init__(self, prewhitener):
+        self.pw = prewhitener
 
         # Create status widget to indicate when calculations are running
         self._status = widgets.HTML(value="")
@@ -439,7 +439,7 @@ class PyriodGUI:
         
         # Define selector for masking points
         self._selector = lasso_selector(self.lcax, self._lcplot_data)
-        self.lcfig.canvas.mpl_connect("key_press_event",
+        self._lc_key_press_callback_id = self.lcfig.canvas.mpl_connect("key_press_event",
                                         self._mask_selected_pts)
         # Set to display sampled model
         self._init_viewport_model_plot()
@@ -593,10 +593,18 @@ class PyriodGUI:
         #self.perfig.canvas.mpl_connect('button_press_event', self._onperiodogramclick)
         self._press = False
         self._move = False
-        self.perfig.canvas.mpl_connect('button_press_event', self._onpress)
-        self.perfig.canvas.mpl_connect('button_release_event',
-                                        self._onrelease)
-        self.perfig.canvas.mpl_connect('motion_notify_event', self._onmove)
+        self._per_button_press_callback_id = self.perfig.canvas.mpl_connect(
+            "button_press_event",
+            self._onpress,
+        )
+        self._per_button_release_callback_id = self.perfig.canvas.mpl_connect(
+            "button_release_event",
+            self._onrelease,
+        )
+        self._per_motion_callback_id = self.perfig.canvas.mpl_connect(
+            "motion_notify_event",
+            self._onmove,
+        )
 
         # Set axis labels
         self.perax.set_ylabel(f"amplitude ({self.pw.amp_unit})")
@@ -853,13 +861,21 @@ class PyriodGUI:
         self.save_perfig(self._perfig_file_location.selected)
 
     # Update status message while calculations are occurring
+    # Also disable buttons while the fit is being performed
     def _update_status(self, calculating=True):
         if calculating:
             self._status.value = (
                 "<center><b><big><font color='red'>"
                 "UPDATING CALCULATIONS...</big></b></center>")
+            #Disable buttons during calculation
+            self._addtosol.disabled = True
+            self._refit.disabled = True
         else:
-                    self._status.value = ""
+            self._status.value = ""
+            #Re-enable buttons
+            self._addtosol.disabled = False
+            self._refit.disabled = False
+
     
     # Functions to update displays
     def _update_lc_display(self, *args):
@@ -1110,28 +1126,25 @@ class PyriodGUI:
         self._update_status(False)  # Calculation done
 
     def _sig_thresh_from_gui(self, *args):
-        try:
-            # Compute significance threshold from GUI widget values
-            fill_value = np.nan
-            if self._sig_extrapolate_widget.value:
-                fill_value = 'extrapolate'
-            self.pw.calculate_significance_threshold(
-                multiplier=self._sig_multiplier_widget.value,
-                startfreq=self._sig_startfreq_widget.value,
-                endfreq=self._sig_endfreq_widget.value,
-                freqstep=self._sig_freqstep_widget.value,
-                winwidth=self._sig_winwidth_widget.value,
-                avgtype=self._sig_avgtype_widget.value,
-                autorecalculate=self._sig_auto_recalculate.value)
-            # update plot
-            self._sig_threshold_plot.set_data(
-                self.pw._sig_threshold_freqs,
-                self.pw._sig_threshold_power,
-            )
-            self.perfig.canvas.draw_idle()
-        except Exception as e:
-            self.pw.log(f"Error caught: {e}","error")
-            self.update_log()
+        # Compute significance threshold from GUI widget values
+        fill_value = np.nan
+        if self._sig_extrapolate_widget.value:
+            fill_value = 'extrapolate'
+        self.pw.calculate_significance_threshold(
+            multiplier=self._sig_multiplier_widget.value,
+            startfreq=self._sig_startfreq_widget.value,
+            endfreq=self._sig_endfreq_widget.value,
+            freqstep=self._sig_freqstep_widget.value,
+            winwidth=self._sig_winwidth_widget.value,
+            avgtype=self._sig_avgtype_widget.value,
+            autorecalculate=self._sig_auto_recalculate.value)
+        # update plot
+        self._sig_threshold_plot.set_data(
+            self.pw._sig_threshold_freqs,
+            self.pw._sig_threshold_power,
+        )
+        self.perfig.canvas.draw_idle()
+
     
     def _sig_thresh_change_auto(self, *args):
         self.pw.autorecalculate = self._sig_auto_recalculate.value
@@ -1231,3 +1244,223 @@ class PyriodGUI:
     def stagedvalues(self):
         return self.pw.stagedvalues
     
+    def close(self, close_prewhitener=False, clear_prewhitener=False, collect=False):
+        """Close GUI/display resources owned by this PyriodGUI instance.
+
+        Parameters
+        ----------
+        close_prewhitener : bool, optional
+            If True, also call ``self.pw.close()`` after closing the GUI.
+            The default is False because the Prewhitener may still be useful
+            after the GUI is closed.
+        clear_prewhitener : bool, optional
+            Passed to ``self.pw.close(clear_data=...)`` if close_prewhitener
+            is True. If True, releases the large science data arrays too.
+        collect : bool, optional
+            If True, run garbage collection at the end. Usually not necessary,
+            but useful in notebooks after creating many GUI instances.
+        """
+        if getattr(self, "_closed", False):
+            return
+
+        self._closed = True
+
+        def safe_call(obj, method, *args, **kwargs):
+            if obj is None:
+                return
+            try:
+                getattr(obj, method)(*args, **kwargs)
+            except Exception:
+                pass
+
+        def safe_attr(name):
+            return getattr(self, name, None)
+
+        # ------------------------------------------------------------------
+        # 1. Stop and detach Matplotlib timers
+        # ------------------------------------------------------------------
+        for timer_name in ("_model_update_timer", "_periodogram_update_timer"):
+            timer = safe_attr(timer_name)
+            safe_call(timer, "stop")
+
+            # Matplotlib timers keep callbacks in a list. Clearing it helps
+            # break references back to self.
+            try:
+                timer.callbacks.clear()
+            except Exception:
+                pass
+
+            setattr(self, timer_name, None)
+
+        # ------------------------------------------------------------------
+        # 2. Disconnect axis callbacks
+        # ------------------------------------------------------------------
+        lcax = safe_attr("lcax")
+        if lcax is not None:
+            cid = safe_attr("_model_xlim_callback_id")
+            if cid is not None:
+                safe_call(lcax.callbacks, "disconnect", cid)
+            self._model_xlim_callback_id = None
+
+        perax = safe_attr("perax")
+        if perax is not None:
+            cid = safe_attr("_periodogram_xlim_callback_id")
+            if cid is not None:
+                safe_call(perax.callbacks, "disconnect", cid)
+            self._periodogram_xlim_callback_id = None
+
+        # ------------------------------------------------------------------
+        # 3. Disconnect Matplotlib canvas callbacks
+        # ------------------------------------------------------------------
+        mpl_callback_pairs = [
+            ("lcfig", "_lc_key_press_callback_id"),
+            ("perfig", "_per_button_press_callback_id"),
+            ("perfig", "_per_button_release_callback_id"),
+            ("perfig", "_per_motion_callback_id"),
+        ]
+
+        for fig_name, cid_name in mpl_callback_pairs:
+            fig = safe_attr(fig_name)
+            cid = safe_attr(cid_name)
+            if fig is not None and cid is not None:
+                safe_call(fig.canvas, "mpl_disconnect", cid)
+            setattr(self, cid_name, None)
+
+        # ------------------------------------------------------------------
+        # 4. Disconnect lasso selector
+        # ------------------------------------------------------------------
+        selector = safe_attr("_selector")
+        if selector is not None:
+            # Depending on the implementation, either the wrapper or the
+            # underlying Matplotlib LassoSelector may own the connections.
+            safe_call(selector, "disconnect")
+            safe_call(selector, "disconnect_events")
+
+            lasso = getattr(selector, "lasso", None)
+            safe_call(lasso, "set_active", False)
+            safe_call(lasso, "disconnect_events")
+
+            self._selector = None
+
+        # ------------------------------------------------------------------
+        # 5. Disconnect ipywidget observers and button callbacks
+        # ------------------------------------------------------------------
+        def safe_unobserve(widget_name, callback, names=None):
+            widget = safe_attr(widget_name)
+            if widget is not None:
+                try:
+                    widget.unobserve(callback, names=names)
+                except Exception:
+                    pass
+
+        def safe_remove_click(button_name, callback):
+            button = safe_attr(button_name)
+            if button is not None:
+                try:
+                    button.on_click(callback, remove=True)
+                except Exception:
+                    pass
+
+        # Button callbacks
+        safe_remove_click("_save_tsfig", self._save_tsfig_button_click)
+        safe_remove_click("_reset_mask", self._clear_mask)
+        safe_remove_click("_save_perfig", self._save_perfig_button_click)
+        safe_remove_click("_addtosol", self._add_staged_signal)
+        safe_remove_click("_refit", self.fit_model)
+        safe_remove_click("_sig_calculate_button", self._sig_thresh_from_gui)
+        safe_remove_click("_delete", self._delete_selected)
+        safe_remove_click("_save", self._save_button_click)
+        safe_remove_click("_load", self._load_button_click)
+        safe_remove_click("_save_log", self._save_log_button_click)
+
+        # Observer callbacks
+        safe_unobserve("_tstype", self._update_and_rescale_lc_display)
+        safe_unobserve("_fold", self._update_and_rescale_lc_display)
+        safe_unobserve("_fold_on", self._update_lc_display)
+        safe_unobserve("_select_fold_freq", self._fold_freq_selected, names="value")
+
+        safe_unobserve("_show_per_markers", self._display_per_markers)
+        safe_unobserve("_show_per_orig", self._display_per_orig)
+        safe_unobserve("_show_per_resid", self._display_per_resid)
+        safe_unobserve("_show_per_model", self._display_per_model)
+        safe_unobserve("_show_sig_threshold", self._display_sig_threshold)
+        safe_unobserve("_sig_auto_recalculate", self._sig_thresh_change_auto)
+
+        # QGrid callback
+        qgrid_widget = safe_attr("_signals_qgrid")
+        if qgrid_widget is not None:
+            try:
+                qgrid_widget.off("cell_edited", self._qgrid_changed_manually)
+            except Exception:
+                pass
+
+        # ------------------------------------------------------------------
+        # 6. Remove Matplotlib artists
+        # ------------------------------------------------------------------
+        artist_names = [
+            "_lcplot_data",
+            "_lcplot_model",
+            "_perplot_orig",
+            "_perplot_model",
+            "_perplot_resid",
+            "_sig_threshold_plot",
+            "_marker",
+            "_signal_markers",
+            "_combo_markers",
+        ]
+
+        for name in artist_names:
+            artist = safe_attr(name)
+            if artist is not None:
+                safe_call(artist, "remove")
+            setattr(self, name, None)
+
+        # ------------------------------------------------------------------
+        # 7. Close figure canvases and figures
+        # ------------------------------------------------------------------
+        for fig_name in ("lcfig", "perfig"):
+            fig = safe_attr(fig_name)
+            if fig is not None:
+                safe_call(fig.canvas, "close")
+                try:
+                    plt.close(fig)
+                except Exception:
+                    pass
+            setattr(self, fig_name, None)
+
+        self.lcax = None
+        self.perax = None
+
+        # ------------------------------------------------------------------
+        # 8. Close widgets
+        # ------------------------------------------------------------------
+        # This catches ipywidgets, FileChooser widgets, qgrid widgets, and
+        # ipympl canvases if any are still referenced.
+        for name, obj in list(self.__dict__.items()):
+            if name == "pw":
+                continue
+
+            if hasattr(obj, "close"):
+                try:
+                    obj.close()
+                except Exception:
+                    pass
+
+        # ------------------------------------------------------------------
+        # 9. Drop GUI references that may keep large objects alive
+        # ------------------------------------------------------------------
+        for name in list(self.__dict__):
+            if name in {"pw", "_closed"}:
+                continue
+            setattr(self, name, None)
+
+        # ------------------------------------------------------------------
+        # 10. Optionally close the associated Prewhitener
+        # ------------------------------------------------------------------
+        if close_prewhitener and self.pw is not None:
+            self.pw.close(clear_data=clear_prewhitener, collect=False)
+            self.pw = None
+
+        if collect:
+            import gc
+            gc.collect()

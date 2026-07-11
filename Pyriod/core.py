@@ -1167,41 +1167,102 @@ class Prewhitener(object):
         ampvec = (2./len(time))*np.array(ampvec)
         return freqvec, ampvec
 
-    def close(self):
-        """Close Pyriod GUI resources.
+    def close(self, clear_data=True, collect=False):
+        """Release resources owned by this Prewhitener.
 
-        This is intended for Jupyter/notebook use, where figures, widgets,
-        callbacks, and timers can otherwise keep a Pyriod instance alive.
+        Parameters
+        ----------
+        clear_data : bool, optional
+            If True, release large science data products such as the light curve,
+            periodograms, fitted values, fit result, and significance-threshold
+            arrays. The default is True.
 
-        The science data are not deleted. This only closes GUI/display resources.
+            If False, only logger resources are closed.
+        collect : bool, optional
+            If True, run garbage collection at the end. Usually not necessary,
+            but useful in notebooks after creating many large objects.
+
+        Notes
+        -----
+        After ``clear_data=True``, this Prewhitener should be considered closed
+        and should not be used for further fitting or plotting.
         """
+        if getattr(self, "_closed", False):
+            return
 
-        def safe_call(obj, method, *args, **kwargs):
-            if obj is None:
-                return
-            try:
-                getattr(obj, method)(*args, **kwargs)
-            except Exception:
-                pass
+        self._closed = True
 
-        # Remove logger handlers owned by this instance.
+        # ------------------------------------------------------------------
+        # 1. Close and remove logger handlers
+        # ------------------------------------------------------------------
         logger = getattr(self, "_logger", None)
         if logger is not None:
             for handler in list(logger.handlers):
                 try:
+                    handler.flush()
+                except Exception:
+                    pass
+
+                try:
                     handler.close()
                 except Exception:
                     pass
+
                 try:
                     logger.removeHandler(handler)
                 except Exception:
                     pass
 
-        # Close the StringIO log buffer.
+        self._logger = None
+
+        # ------------------------------------------------------------------
+        # 2. Close the StringIO log buffer
+        # ------------------------------------------------------------------
         log_buffer = getattr(self, "_log_capture_string", None)
         if log_buffer is not None:
             try:
                 log_buffer.close()
             except Exception:
                 pass
+
         self._log_capture_string = None
+
+        # ------------------------------------------------------------------
+        # 3. Optionally release large science objects
+        # ------------------------------------------------------------------
+        if clear_data:
+            large_attrs = [
+                # Light curve and model products
+                "lc",
+
+                # Signal tables
+                "stagedvalues",
+                "_fitvalues",
+
+                # Fit result
+                "fit_result",
+
+                # Frequency grid and periodograms
+                "freqs",
+                "per_orig",
+                "per_model",
+                "per_resid",
+
+                # Significance-threshold products
+                "noise_spectrum",
+                "significance_multiplier",
+                "significance_settings",
+                "_sig_threshold_freqs",
+                "_sig_threshold_power",
+
+                # Miscellaneous potentially large/cache-like state
+                "nyquist_quality",
+            ]
+
+            for name in large_attrs:
+                if hasattr(self, name):
+                    setattr(self, name, None)
+
+        if collect:
+            import gc
+            gc.collect()
