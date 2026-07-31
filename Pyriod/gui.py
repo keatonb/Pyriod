@@ -50,7 +50,7 @@ class PyriodGUI:
             filename='Pyriod_TimeSeries.png',
             show_hidden=False,
             select_default=True,
-            use_dir_icons=True,
+            dir_icon="📁",
             show_only_dirs=False
         )
 
@@ -84,7 +84,6 @@ class PyriodGUI:
         # Fold on frequency checkbox
         self._fold = widgets.Checkbox(
             value=False,
-            step=self.pw.fres,
             description='Fold time series on frequency?',
         )
         self._fold.observe(self._update_and_rescale_lc_display)
@@ -111,7 +110,7 @@ class PyriodGUI:
             filename='Pyriod_Periodogram.png',
             show_hidden=False,
             select_default=True,
-            use_dir_icons=True,
+            dir_icon="📁",
             show_only_dirs=False
         )
 
@@ -266,8 +265,7 @@ class PyriodGUI:
         # Calulate sig threshold button
         self._sig_calculate_button = widgets.Button(
             description='Calculate',
-            tooltip="Calculate new sigificance threshold.",
-            style={'description_width': 'initial'}
+            tooltip="Calculate new sigificance threshold."
         )
         self._sig_calculate_button.on_click(self._sig_thresh_from_gui)
 
@@ -343,7 +341,7 @@ class PyriodGUI:
             filename='Pyriod_solution.csv',
             show_hidden=False,
             select_default=True,
-            use_dir_icons=True,
+            dir_icon="📁",
             show_only_dirs=False
         )
 
@@ -383,7 +381,7 @@ class PyriodGUI:
             layout={
                 'height': '250px',
                 'width': '950px',
-                'overflow_y': 'auto'
+                'overflow': 'auto'
             }
         )
         self.update_log()
@@ -394,7 +392,7 @@ class PyriodGUI:
             filename='Pyriod_log.txt',
             show_hidden=False,
             select_default=True,
-            use_dir_icons=True,
+            dir_icon="📁",
             show_only_dirs=False
         )
 
@@ -1115,17 +1113,13 @@ class PyriodGUI:
         """Fit model and update plots
         """
         # Indicate that a calculation is running
-        self._update_status()
-        self.pw.fit_model()
-        self._update_freq_dropdown()
-        self._update_lc_display()
-        self._update_signal_markers()
-        self._update_per_plots()
-        self._mark_highest_peak()  # Mark highest peak in residuals
-        self._update_signals_qgrid()
-        self._update_fit_report()
-        self.update_log()
-        self._update_status(False)  # Calculation done
+        self._update_status(True)
+        try:
+            self.pw.fit_model()
+            self._refresh_from_prewhitener()
+            self._update_per_plots()
+        finally:
+            self._update_status(False)  # Calculation done
 
     def _sig_thresh_from_gui(self, *args):
         # Compute significance threshold from GUI widget values
@@ -1158,10 +1152,8 @@ class PyriodGUI:
             self._fit_result_html.value = self.pw.fit_result._repr_html_()
 
     def _update_signals_qgrid(self):
-        displayframe = self.pw.stagedvalues.copy()
-        displayframe["amp"] = displayframe["amp"] * self.pw.amp_conversion
-        displayframe["amperr"] = displayframe["amperr"] * self.pw.amp_conversion
-        self._signals_qgrid.df = displayframe # Update qgrid displayed values
+         # Update qgrid displayed values
+        self._signals_qgrid.df = self.pw.solution_table(display_units=True, include_brute=True)
 
     def _qgrid_changed_manually(self, *args):
         """Pass along manual changes to Signals table to."""
@@ -1186,8 +1178,11 @@ class PyriodGUI:
                     logmessage += f" - {colname} -> {new_value}\n"
 
         self.pw.log(logmessage)
-        # Update plots only if signal values (not what is fixed) changed
         self.pw._set_stagedvalues(self._convert_qgrid_to_stagedvalues())
+        self._update_freq_dropdown()
+        self._update_signal_markers()
+        self._display_per_markers()
+        self.update_log()
 
     def _convert_qgrid_to_stagedvalues(self):
         tempdf = (self._signals_qgrid.get_changed_df().copy()
@@ -1202,15 +1197,12 @@ class PyriodGUI:
         existing = [idx for idx in indices if idx in self.pw.stagedvalues.index]
         if not existing:
             return
-        self.pw.remove_signals(indices)
-        # Remove from qgrid
-        ########### THIS MISSES THE INVALIDATED COMBINATIONS
-        self._signals_qgrid.df = (
-            self._signals_qgrid.get_changed_df().drop(existing))
-        
+        self.pw.remove_signals(existing)
+
+        self._update_freq_dropdown()
+        self._update_signal_markers()
         self._update_signals_qgrid()
         self.update_log()
-        
 
     def _save_button_click(self, *args):
         self.pw.save_solution(filename=self._signals_file_location.selected)
