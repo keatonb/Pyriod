@@ -65,10 +65,13 @@ class Capturing(list):
 
 
 class Prewhitener(object):
-    # Generate unique ID for this Pyriod instance
-    _id_generator = itertools.count(0)
+    """Perform iterative frequency analysis and prewhitening.
 
-    """Core fitting object implementing the pre-whitening algorithm.
+    `Prewhitener` contains the core analysis state and fitting
+    functionality used by Pyriod. It can be used directly for
+    non-interactive analysis or passed to `PyriodGUI` to create
+    the interactive notebook interface.
+
 
     Parameters
     ----------
@@ -119,6 +122,9 @@ class Prewhitener(object):
     fitvalues : pandas.DataFrame
         Best-fit values from most recent fit.
     """
+    # Generate unique ID for this Pyriod instance
+    _id_generator = itertools.count(0)
+
     def __init__(self, lc, amp_unit='ppt', freq_unit='muHz',
                  use_weights=True, rescale_covar=False, ls_method='fast', **kwargs):
         ### LOG ### 

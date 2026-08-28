@@ -1,6 +1,30 @@
 site_name: Pyriod
+
 nav:
     - Home: index.md
     - Walkthrough: walkthrough.md
 #   - Examples: examples.md
-theme: readthedocs
+    - API Reference:
+        - Prewhitener: api/prewhitener.md
+        - PyriodGUI: api/gui.md
+
+theme: 
+    name: readthedocs
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            docstring_style: numpy
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            filters:
+              - "!^_"

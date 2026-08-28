@@ -20,10 +20,20 @@ from .utils import _as_scalar_float
 plt.ioff()  # Turn off interactive mode
 
 class PyriodGUI:
-    """Interactive widgets and plots for prewhitening.
-    
-    This object owns the display/interaction elements.
-    Must be connected to a prewhitener = Prewhitener object.
+    """Interactive graphical interface for a `Prewhitener`.
+
+    Parameters
+    ----------
+    prewhitener : Prewhitener
+        The analysis object whose state is displayed and manipulated
+        by the GUI.
+
+    Notes
+    -----
+    The GUI and the supplied `Prewhitener` refer to the same underlying
+    analysis state. Changes made through the GUI therefore modify the
+    supplied `Prewhitener` object. Changes made directly to the `Prewhitener`
+    may not be reflected in the GUI.
     """
     def __init__(self, prewhitener):
         self.pw = prewhitener
