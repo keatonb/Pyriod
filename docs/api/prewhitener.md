@@ -6,5 +6,19 @@ of the graphical interface.
 
 ::: Pyriod.core.Prewhitener
     options:
-      members: true
-      inherited_members: false
+      members:
+        - lc_model
+        - lc_resid
+        - fitvalues
+        - uptodate
+        - set_frequency_sampling
+        - add_signal
+        - add_combination
+        - fit_model
+        - solution_table
+        - staged_table
+        - sample_model
+        - remove_signals
+        - mask_indices
+        - clear_mask
+        - close
