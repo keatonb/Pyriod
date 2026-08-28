@@ -318,7 +318,7 @@ class PyriodGUI:
         self._signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
 
     def _get_qgrid(self):
-        display_df = self.pw.solution_table(display_units=True, include_brute=True)
+        display_df = self.pw.staged_table(display_units=True)
         return qgrid.show_grid(display_df, show_toolbar=False, precision=9,
                                grid_options=self._gridoptions,
                                column_definitions=self._column_definitions)
@@ -689,6 +689,13 @@ class PyriodGUI:
 
         line.set_data(xplot, yplot)
 
+    def _update_refit_button(self):
+        """Indicate whether the staged model needs to be fitted."""
+        if self.pw.uptodate:
+            self._refit.button_style = ''
+        else:
+            self._refit.button_style = 'warning'
+
     def _refresh_from_prewhitener(self):
         """Refresh GUI displays from the current Prewhitener state."""
         self._update_freq_dropdown()
@@ -973,6 +980,7 @@ class PyriodGUI:
             self._lcplot_data.set_edgecolors("None")
             self._update_lc_display()
             self._update_per_plots()
+            self._update_refit_button()
             self.update_log()
 
     def _clear_mask(self, _):
@@ -983,6 +991,7 @@ class PyriodGUI:
         self._lcplot_data.set_edgecolors("None")
         self._update_lc_display()
         self._update_per_plots()
+        self._update_refit_button()
         self.update_log()
 
     # Periodogram related functions
@@ -1153,7 +1162,9 @@ class PyriodGUI:
 
     def _update_signals_qgrid(self):
          # Update qgrid displayed values
-        self._signals_qgrid.df = self.pw.solution_table(display_units=True, include_brute=True)
+        self._signals_qgrid.df = self.pw.staged_table(display_units=True)
+        self._update_refit_button()
+        self._update_signal_markers()
 
     def _qgrid_changed_manually(self, *args):
         """Pass along manual changes to Signals table to."""
@@ -1179,6 +1190,7 @@ class PyriodGUI:
 
         self.pw.log(logmessage)
         self.pw._set_stagedvalues(self._convert_qgrid_to_stagedvalues())
+        self._update_refit_button()
         self._update_freq_dropdown()
         self._update_signal_markers()
         self._display_per_markers()

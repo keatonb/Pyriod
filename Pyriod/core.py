@@ -812,6 +812,16 @@ class Prewhitener(object):
 
         return table
 
+    def staged_table(self, display_units=True):
+        """Return values staged for the next model fit."""
+        table = self.stagedvalues.copy()
+
+        if display_units:
+            table["amp"] *= self.amp_conversion
+            table["amperr"] *= self.amp_conversion
+
+        return table
+
     def _set_stagedvalues(self, df):
         self.stagedvalues = df
 
