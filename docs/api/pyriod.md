@@ -3,4 +3,4 @@
 ::: Pyriod.Pyriod.Pyriod
     options:
       members: false
-      show_root_heading
+      inherited_members: false
