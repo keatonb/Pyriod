@@ -75,50 +75,69 @@ class Prewhitener(object):
 
     Parameters
     ----------
-        lc : lightkurve.LightCurve
-            Light curve data to analyze.
-        amp_unit : str, optional
-            Amplitude unit to use (e.g., "ppt", "percent").
-        freq_unit: ("muHz", "perday"), optional
-            Frequency unit to use.
-        use_weights: (bool)
-            Weight data points by 1/lc.flux_err (if available)? Default is
-            True.
-        rescale_covar: bool, optional
-            Rescale covariance matrix when estimating uncertainties?
-            Default is False.
-        ls_method:  str, optional
-            Lomb-Scargle method keyword passed to lightkurve LombScarglePeriodogram.
-            Default is "fast".
-        frequency : array-like, optional
-            Explicit set of frequencies to compute periodogram at. Default
-            is None.
-        oversample_factor : float, optional
-            How many times more densely than the natural frequency resolution
-            of 1/duration to sample frequencies. The default is 5.
-        nyquist_factor : float, optional
-            How many time beyond the approximate Nyquist frequency to sample
-            periodograms. The default is 1. Overridden by maxfreq, if provided.
-            Note that the Nyquist frequency is estimated to equal 1/(2*dt),
-            where dt is the median time separation between adjacent samples.
-            This is only valid for evenly sampled data, and may be a very poor
-            approximation for unevenly sampled data.
-        minfreq : float, optional
-            Minimum frequency of range to use. The default is 1/duration.
-        maxfreq : float, optional
-            Maximum frequency of range to use. The default is based off of
-            nyquist_factor.
+    lc : lightkurve.LightCurve
+        Light curve data to analyze.
+    amp_unit : str, optional
+        Amplitude unit to use (e.g., "ppt", "percent").
+    freq_unit: ("muHz", "perday"), optional
+        Frequency unit to use.
+    use_weights: (bool)
+        Weight data points by 1/lc.flux_err (if available)? Default is
+        True.
+    rescale_covar: bool, optional
+        Rescale covariance matrix when estimating uncertainties?
+        Default is False.
+    ls_method:  str, optional
+        Lomb-Scargle method keyword passed to lightkurve LombScarglePeriodogram.
+        Default is "fast".
+    frequency : array-like, optional
+        Explicit set of frequencies to compute periodogram at. Default
+        is None.
+    oversample_factor : float, optional
+        How many times more densely than the natural frequency resolution
+        of 1/duration to sample frequencies. The default is 5.
+    nyquist_factor : float, optional
+        How many time beyond the approximate Nyquist frequency to sample
+        periodograms. The default is 1. Overridden by maxfreq, if provided.
+        Note that the Nyquist frequency is estimated to equal 1/(2*dt),
+        where dt is the median time separation between adjacent samples.
+        This is only valid for evenly sampled data, and may be a very poor
+        approximation for unevenly sampled data.
+    minfreq : float, optional
+        Minimum frequency of range to use. The default is 1/duration.
+    maxfreq : float, optional
+        Maximum frequency of range to use. The default is based off of
+        nyquist_factor.
 
     Attributes
     ----------
-    lc : lightkurve.LightCurve
-        Time Series to analyze. Includes columns:
-            - "time" (units of days)
-            - "flux" (original light curve, input units preserved)
-            - "model" (current model sampled as the data; same units as "flux")
-            - "resid" (residuals (flux - model); same units as "flux")
+    uptodate : bool
+        Whether the currently fitted model reflects the staged signal
+        parameters.
     fitvalues : pandas.DataFrame
-        Best-fit values from most recent fit.
+        Parameters of the currently fitted signals.
+    lc_model : lightkurve.LightCurve
+        Model evaluated at the observation times.
+    lc_resid : lightkurve.LightCurve
+        Residual light curve after subtracting the fitted model.
+    solution_table : pandas.DataFrame
+        Table describing the fitted frequency solution.
+    staged_table : pandas.DataFrame
+        Table describing the signal parameters that will be used by the
+        next fit.
+    freqs : numpy.ndarray
+        Frequency grid on which `per_orig`, `per_model`, and `per_resid`
+        are evaluated, expressed in `freq_unit`.
+    per_orig : numpy.ndarray
+        Amplitude periodogram of the original light curve, evaluated on
+        `freqs`. Amplitudes are expressed in `amp_unit`.
+    per_model : numpy.ndarray
+        Amplitude periodogram of the current fitted light-curve model,
+        evaluated on `freqs`. Amplitudes are expressed in `amp_unit`.
+    per_resid : numpy.ndarray
+        Amplitude periodogram of the residual light curve (data minus 
+        model), evaluated on `freqs`. Inspected for significant signals
+        for prewhitening. Amplitudes are expressed in `amp_unit`.
     """
     # Generate unique ID for this Pyriod instance
     _id_generator = itertools.count(0)
