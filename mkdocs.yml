@@ -5,6 +5,7 @@ nav:
     - Walkthrough: walkthrough.md
 #   - Examples: examples.md
     - API Reference:
+        - Pyriod: api/pyriod.md
         - Prewhitener: api/prewhitener.md
         - PyriodGUI: api/gui.md
 
