@@ -17,7 +17,7 @@ This main Pyriod class can make both, if requested.
 from .core import Prewhitener
 
 class Pyriod:
-    """Create a prewhitening analysis with an optional interactive GUI.
+    """Perform prewhitening analysis with an optional interactive GUI.
 
     This class provides the traditional Pyriod interface. It creates a
     :class:`Prewhitener` instance and, by default, an associated
@@ -34,8 +34,16 @@ class Pyriod:
         If True, create an interactive `PyriodGUI`. The default is True.
     **kwargs
         Keyword arguments passed to `Prewhitener`.
+
+    Attributes
+    ----------
+    pw : Prewhitener
+        The underlying prewhitening analysis object.
+    gui : PyriodGUI or None
+        The interactive graphical interface associated with `pw`.
+        If `gui=False` this is None.
     """
-    
+
     def __init__(self, *args, gui=True, **kwargs):
         self.pw = Prewhitener(*args, **kwargs)
         self.gui = gui
