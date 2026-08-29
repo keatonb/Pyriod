@@ -7,10 +7,6 @@ of the graphical interface.
 ::: Pyriod.core.Prewhitener
     options:
       members:
-        - lc_model
-        - lc_resid
-        - fitvalues
-        - uptodate
         - set_frequency_sampling
         - add_signal
         - add_combination

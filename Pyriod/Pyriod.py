@@ -41,7 +41,7 @@ class Pyriod:
         The underlying prewhitening analysis object.
     gui : PyriodGUI or None
         The interactive graphical interface associated with `pw`.
-        If `gui=False` this is None.
+        This is `None` when the GUI is disabled.
     """
 
     def __init__(self, *args, gui=True, **kwargs):
