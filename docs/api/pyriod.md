@@ -2,5 +2,5 @@
 
 ::: Pyriod.Pyriod.Pyriod
     options:
-      members: true
-      inherited_members: false
+      members: false
+      show_root_heading
