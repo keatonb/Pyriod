@@ -120,11 +120,14 @@ class Prewhitener(object):
         Model evaluated at the observation times.
     lc_resid : lightkurve.LightCurve
         Residual light curve after subtracting the fitted model.
-    solution_table : pandas.DataFrame
-        Table describing the fitted frequency solution.
-    staged_table : pandas.DataFrame
+    stagedvalues : pandas.DataFrame
         Table describing the signal parameters that will be used by the
         next fit.
+    fitvalues : pandas.DataFrame
+        Table describing the best-fit parameters from the most 
+        recent fit.
+    fit_result : lmfit.model.ModelResult
+        Detailed results of most recent model fit.
     freqs : numpy.ndarray
         Frequency grid on which `per_orig`, `per_model`, and `per_resid`
         are evaluated, expressed in `freq_unit`.
@@ -578,20 +581,15 @@ class Prewhitener(object):
             Include this signal in the next model evaluation? The default is
             True.
         brute : bool (or iterable of bools), optional
-            Brute force estimate phase? The default is False.
+            Brute force estimate phase? The default is True.
         index : str, optional
             Label to use for signal. Defaults to next available 'f#'.
             Duplicating an existing index label raises ValueError.
 
-        Raises
-        ------
-        ValueError
-            If index provided duplicates existing index.
-
-        Returns
-        -------
-        None.
-
+        Notes
+        -----
+        Invalid combination expressions are not raised as exceptions. An error
+        message is written to the Pyriod log and no signal is added.
         """
         combostr, amp, phase, fixamp, fixphase, include, brute, index = (
             make_all_iter([combostr, amp, phase, fixamp, fixphase,
@@ -611,7 +609,7 @@ class Prewhitener(object):
                         amp[i] = np.interp(freq[i],self.freqs,self.per_resid)
                 self.add_signal(list(freq), amp, phase, False, fixamp, fixphase,
                                 include, brute, index=combostr)
-            except CombinationExpressionError as exc:
+            except CombinationExpressionError:
                 self.log(f"Invalid combination string provided in {combostr}.","error")
         else:
             self.log(f"Invalid combination string provided in {combostr}.","error")
@@ -653,18 +651,17 @@ class Prewhitener(object):
             method='brute')
         return result.params['phase'].value
 
-    def fit_model(self, *args):
+    def fit_model(self):
         """Optimize fit for model with all included signals.
 
         The model fit is optimized with the lmfit package. The model is a sum
         of sinusoids, one for each included signal. Initial fitting values are
-        taken from the Pyriod.stagedvalues attribute, which contains the same
-        information as the interactive Signals pane in GUI mode. New signals
-        (or those with brute=True set) will have an initial phase estimated
+        taken from the `stagedvalues` attribute. New signals (or those with 
+        `brute=True` set) will have an initial phase estimated
         from brute-force sampling. The frequencies of combination signals are
         constrained to relate to independent signal frequencies following
         arithmetic expressions. The new best-fit parameters are stored in the
-        fitvalues attribute, and the lmfit report is stores in the fit_report
+        `fitvalues` attribute, and the lmfit report is stored in the `fit_result`
         attribute.
         """
         # Check that there are signals in the model
@@ -821,6 +818,24 @@ class Prewhitener(object):
                 self.noise_spectrum(self._fitvalues['freq']))
 
     def solution_table(self, display_units=True, include_brute=True):
+        """Return a copy of the current fitted signal parameters.
+
+        Parameters
+        ----------
+        display_units : bool, optional
+            If True, convert the ``amp`` and ``amperr`` columns to the current
+            display amplitude unit using ``amp_conversion``. If False, return
+            amplitudes in the internal fitting units. Default is True.
+        include_brute : bool, optional
+            If True, include a ``brute`` column in the returned table. The
+            column is set to False for all fitted signals. Default is True.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Copy of the current fitted signal table. The returned table can be
+            modified without changing the internal fitted values.
+        """
         table = self._fitvalues.copy()
 
         if include_brute:
@@ -836,7 +851,22 @@ class Prewhitener(object):
         return table
 
     def staged_table(self, display_units=True):
-        """Return values staged for the next model fit."""
+        """Return a copy of the signal parameters staged for the next model fit.
+
+        Parameters
+        ----------
+        display_units : bool, optional
+            If True, convert the ``amp`` and ``amperr`` columns to the current
+            display amplitude unit using ``amp_conversion``. If False, return
+            amplitudes in the internal fitting units. Default is True.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Copy of the staged signal table. These values are those that will be
+            used for the next model evaluation or fit. The returned table can be
+            modified without changing the internally staged values.
+        """
         table = self.stagedvalues.copy()
 
         if display_units:
@@ -849,12 +879,12 @@ class Prewhitener(object):
         self.stagedvalues = df
 
     def sample_model(self, time):
-        """Sample the current best fit model at desired times.
+        """Sample the current best-fit model at desired times.
 
         Parameters
         ----------
         time : iterable
-            time of samples in days
+            Time of samples in units of days.
 
         Returns
         -------
@@ -879,19 +909,20 @@ class Prewhitener(object):
 
     def remove_signals(self, indices):
         """
-        Drop provided indices from stagedvalues and Signals table.
+        Drop provided indices from ``stagedvalues`` table.
 
-        Signals will not be dropped from the current model until a new fit is
-        performed.
+        Any combination signals that are defined in terms of removed signals
+        will also be removed.
 
         Parameters
         ----------
         indices : str, or iterable of str
             Indices to drop from stagedvalues.
 
-        Returns
+        Notes
         -------
-        None.
+        Signals will not be dropped from the current model until a new fit is
+        performed.
         """
 
         # Accept a single string, a pandas Index, list, tuple, or ndarray.
@@ -938,6 +969,25 @@ class Prewhitener(object):
         return df
     
     def mask_indices(self, indices, threshold=30):
+        """Mask selected light curve points by index.
+
+        Parameters
+        ----------
+        indices : array-like of int
+            Indices of the light curve points to exclude from the analysis.
+            The corresponding values in the "include" column of ``lc`` are
+            set to False.
+        threshold : int, optional
+            Maximum number of array elements to display before abbreviating the
+            index list in the log message. Passed to numpy.array2string.
+            Default is 30.
+
+        Notes
+        ----------
+        If no indices are provided, no mask is changed and a warning is written
+        to the Pyriod log. After masking points, the light-curve mask state is
+        updated through _mask_changed(). To un-mask data, use ``clear_mask``.
+        """
         indices = np.asarray(indices, dtype=int)
         if indices.size == 0:
             self.log("No points provided to be masked.", level="warning")
@@ -948,6 +998,10 @@ class Prewhitener(object):
         self._mask_changed()
 
     def clear_mask(self):
+        """Un-mask all data points in the light curve.
+
+        All values in the "include" column of ``lc`` are set to True.
+        """
         self.log("Restoring all masked points.")
         self.lc["include"][:] = 1
         self._mask_changed()
