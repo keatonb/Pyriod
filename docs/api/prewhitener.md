@@ -16,7 +16,11 @@ of the graphical interface.
         - staged_table
         - sample_model
         - calculate_significance_threshold
+        - spectral_window
         - mask_indices
         - clear_mask
+        - save_solution
+        - load_solution
         - log
+        - save_log
         - close
