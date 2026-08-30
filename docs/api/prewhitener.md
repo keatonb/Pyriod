@@ -18,4 +18,5 @@ of the graphical interface.
         - calculate_significance_threshold
         - mask_indices
         - clear_mask
+        - log
         - close

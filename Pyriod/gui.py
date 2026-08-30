@@ -1237,7 +1237,7 @@ class PyriodGUI:
 
     ## Log functions
     def update_log(self):
-        self._log.value = self.pw.get_log_html
+        self._log.value = self.pw.log_html
     
     def log(self, message, level='info'):
         # Write messsage to log and update log widget

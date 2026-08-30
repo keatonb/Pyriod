@@ -141,6 +141,9 @@ class Prewhitener(object):
         Amplitude periodogram of the residual light curve (data minus 
         model), evaluated on `freqs`. Inspected for significant signals
         for prewhitening. Amplitudes are expressed in `amp_unit`.
+    log_html : str
+        HTML representation of messages that have been sent to the log
+        so far.
     """
     # Generate unique ID for this Pyriod instance
     _id_generator = itertools.count(0)
@@ -321,11 +324,6 @@ class Prewhitener(object):
         level : TYPE, optional
             Message level/type. Options are 'debug', 'info', 'warning',
             'error', and 'critical'. The default is 'info'.
-
-        Returns
-        -------
-        None.
-
         """
         logdict = {
             'debug': self._logger.debug,
@@ -339,7 +337,7 @@ class Prewhitener(object):
         logdict[level](message)
 
     @property
-    def get_log_html(self):
+    def log_html(self):
         raw_log = self._log_capture_string.getvalue()
         return ("<pre style='white-space: pre-wrap; "
                 "font-family: monospace; "
@@ -1213,7 +1211,7 @@ class Prewhitener(object):
         if overwrite:
             logmessage += ", overwriting."
         self.log(logmessage)
-        loghtml = self.get_log_html
+        loghtml = self.log_html
         soup = BeautifulSoup(loghtml, features="xml")
         mode = {True: "w+", False: "a+"}[overwrite]
         f = open(filename, mode)
