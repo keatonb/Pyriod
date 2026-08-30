@@ -375,13 +375,6 @@ class Prewhitener(object):
         * with a set oversampling factor between a minimum and maximum
           frequency.
 
-        Note that the Nyquist frequency is estimated to equal 1/(2*dt), where
-        dt is the median time separation between adjacent samples. This is only
-        valid for evenly sampled data, and may be a very poor approximation for
-        unevenly sampled data. The Pyriod attribute `nyquist_quality` records,
-        between 0-1, how strongly signals are reflected across the Pyriod
-        attribute `nyquist`.
-
         Parameters
         ----------
         frequency : array, optional
@@ -410,6 +403,12 @@ class Prewhitener(object):
         recalculate the original periodogram, `per_orig`, call
         `compute_pers(orig=True)`.
         
+        The Nyquist frequency is estimated to equal 1/(2*dt), where
+        dt is the median time separation between adjacent samples. This is only
+        valid for evenly sampled data, and may be a very poor approximation for
+        unevenly sampled data. The attribute `nyquist_quality` records,
+        between 0-1, how strongly signals are reflected across the Pyriod
+        attribute `nyquist`.
         """
         # Approximate Nyquist frequency (exact only for evenly sampled data)
         dt = np.median(np.diff(np.sort(self.lc.time.value)))
@@ -469,9 +468,9 @@ class Prewhitener(object):
         Parameters
         ----------
         freq : float (or iterable of floats)
-            Starting frequency of new signal(s).
+            Initial fit frequency of new signal(s).
         amp : float (or iterable of floats), optional
-            Starting amplitude of new signal(s). The default is None. If None,
+            Initial amplitude of new signal(s). The default is None. If None,
             starting amplitude with be set to 1.
         phase : float (or iterable of floats), optional
             Starting phase of new signals. The default is None.
@@ -494,11 +493,6 @@ class Prewhitener(object):
         ------
         ValueError
             If index provided duplicates existing index.
-
-        Returns
-        -------
-        None.
-
         """
         freq, amp, phase, fixfreq, fixamp, fixphase, include, brute, index = (
             make_all_iter([freq, amp, phase, fixfreq, fixamp, fixphase,
@@ -561,7 +555,8 @@ class Prewhitener(object):
                         index=None):
         """Make a new combination signal available to the model to be fit.
 
-        Can be used to add an individual or multiple combinations. Pass single
+        Add an individual or multiple combination signals with frequencies
+        defined arithmetically in terms of existing signals. Pass single
         values for a single signal. For multiple, pass iterables of values.
         Any scaler values provided will be copied for all of multiple signals.
 
@@ -571,7 +566,7 @@ class Prewhitener(object):
             Arithmetic expression for signal frequency terms of existing signal
             indices.
         amp : float (or iterable of floats), optional
-            Starting amplitude of new signal(s). The default is None. If None,
+            Initial amplitude of new signal(s). The default is None. If None,
             starting amplitude with be set to 1.
         phase : float (or iterable of floats), optional
             Starting phase of new signals. The default is None.
