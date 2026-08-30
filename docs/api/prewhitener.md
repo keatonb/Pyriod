@@ -10,11 +10,12 @@ of the graphical interface.
         - set_frequency_sampling
         - add_signal
         - add_combination
+        - remove_signals
         - fit_model
         - solution_table
         - staged_table
         - sample_model
-        - remove_signals
+        - calculate_significance_threshold
         - mask_indices
         - clear_mask
         - close

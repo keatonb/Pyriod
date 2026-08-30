@@ -662,7 +662,7 @@ class Prewhitener(object):
         constrained to relate to independent signal frequencies following
         arithmetic expressions. The new best-fit parameters are stored in the
         `fitvalues` attribute, and the lmfit report is stored in the `fit_result`
-        attribute.
+        attribute. Computes new periodograms for the model and residuals.
         """
         # Check that there are signals in the model
         if np.sum(self.stagedvalues.include.values) == 0:
@@ -985,8 +985,7 @@ class Prewhitener(object):
         Notes
         ----------
         If no indices are provided, no mask is changed and a warning is written
-        to the Pyriod log. After masking points, the light-curve mask state is
-        updated through _mask_changed(). To un-mask data, use ``clear_mask``.
+        to the Pyriod log. Periodograms are updated. To un-mask data, use ``clear_mask``.
         """
         indices = np.asarray(indices, dtype=int)
         if indices.size == 0:
@@ -1001,6 +1000,7 @@ class Prewhitener(object):
         """Un-mask all data points in the light curve.
 
         All values in the "include" column of ``lc`` are set to True.
+        Periodograms are updated.
         """
         self.log("Restoring all masked points.")
         self.lc["include"][:] = 1
@@ -1075,7 +1075,8 @@ class Prewhitener(object):
         interpolation function for the average (mean or median) amplitude
         calculated in a moving frequency window across the residuals
         periodogram; and self.significance_multiplier is a scaling factor for
-        converting this to a significance threshold.
+        converting this to a significance threshold. Settings used for the
+        current threshold stored in ``significance_settings`` dict.
 
         Parameters
         ----------
@@ -1102,11 +1103,6 @@ class Prewhitener(object):
             keyword arguments passed to interpolate function. `fill_value`
             determines how or whether to extrapolate beyond sampled frequency
             range.
-
-        Returns
-        -------
-        None.
-
         """
         # Store arguments for reference or recalculation
         self.significance_settings = {"multiplier":multiplier, 
