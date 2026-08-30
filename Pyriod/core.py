@@ -79,15 +79,15 @@ class Prewhitener(object):
         Light curve data to analyze.
     amp_unit : str, optional
         Amplitude unit to use (e.g., "ppt", "percent").
-    freq_unit: ("muHz", "perday"), optional
+    freq_unit : ("muHz", "perday"), optional
         Frequency unit to use.
-    use_weights: (bool)
+    use_weights : (bool)
         Weight data points by 1/lc.flux_err (if available)? Default is
         True.
-    rescale_covar: bool, optional
+    rescale_covar : bool, optional
         Rescale covariance matrix when estimating uncertainties?
         Default is False.
-    ls_method:  str, optional
+    ls_method :  str, optional
         Lomb-Scargle method keyword passed to lightkurve LombScarglePeriodogram.
         Default is "fast".
     frequency : array-like, optional
@@ -368,11 +368,12 @@ class Prewhitener(object):
         """Set the frequency sampling for periodograms.
 
         The frequency sampling to use for periodograms can be set:
-            - explicitly via the frequency keyword,
-            - with a set oversampling factor out to a multiple of the
-              approximate Nyquist frequency (see further comments about this),
-            - with a set oversampling factor between a minimum and maximum
-              frequency.
+
+        * explicitly via the frequency keyword,
+        * with a set oversampling factor out to a multiple of the
+          approximate Nyquist frequency (see further comments about this),
+        * with a set oversampling factor between a minimum and maximum
+          frequency.
 
         Note that the Nyquist frequency is estimated to equal 1/(2*dt), where
         dt is the median time separation between adjacent samples. This is only
@@ -385,26 +386,30 @@ class Prewhitener(object):
         ----------
         frequency : array, optional
             Explicit set of frequencies to compute periodogram at. The default
-            is None.
-        oversample_factor : FLOAT, optional
+            is None, and this function will choose a frequency array.
+        oversample_factor : float, optional
             How many times more densely than the natural frequency resolution
             of 1/duration to sample frequencies. The default is 5.
-        nyquist_factor : FLOAT, optional
+        nyquist_factor : float, optional
             How many time beyond the approximate Nyquist frequency to sample
             periodograms. The default is 1. Overridden by maxfreq, if provided.
             Note that the Nyquist frequency is estimated to equal 1/(2*dt),
             where dt is the median time separation between adjacent samples.
             This is only valid for evenly sampled data, and may be a very poor
             approximation for unevenly sampled data.
-        minfreq : FLOAT
+        minfreq : float, optional
             Minimum frequency of range to use. The default is 1/duration.
-        maxfreq : FLOAT
+        maxfreq : float, optional
             Maximum frequency of range to use. The default is based off of
             nyquist_factor.
 
-        Returns
-        -------
-        None.
+        Notes
+        -----
+        This function sets Prewhitener attribute `freqs` to the frequencies 
+        that will be used to compute future periodograms. If you want to
+        recalculate the original periodogram, `per_orig`, call
+        `compute_pers(orig=True)`.
+        
         """
         # Approximate Nyquist frequency (exact only for evenly sampled data)
         dt = np.median(np.diff(np.sort(self.lc.time.value)))
