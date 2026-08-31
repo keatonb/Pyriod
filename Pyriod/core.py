@@ -1,16 +1,11 @@
-"""Pyriod, an astronomical prewhitening frequency analysis package.
+"""Core numerical analysis functionality for Pyriod.
 
-Written by Keaton Bell
+This module defines the :class:`Prewhitener` class, which manages
+light-curve data, sinusoidal signal models, iterative prewhitening,
+periodogram calculation, and significance thresholds.
 
-For more, see https://github.com/keatonb/Pyriod
-
----------------------
-
-This is the core file with the Prewhitener object that handles
-the data analysis directly.
-The GUI has been refactored into its own class.
-
----------------------
+The interactive interface is implemented separately by
+:class:`PyriodGUI`.
 """
 
 # Standard imports
@@ -78,72 +73,109 @@ class Prewhitener(object):
     lc : lightkurve.LightCurve
         Light curve data to analyze.
     amp_unit : str, optional
-        Amplitude unit to use (e.g., "ppt", "percent").
-    freq_unit : ("muHz", "perday"), optional
-        Frequency unit to use.
+        Amplitude unit used for input and displayed amplitudes. Accepted
+        values include ``"relative"``, ``"percent"``, ``"ppt"``, ``"ppm"``,
+    and ``"mma"``. Default is ``"ppt"``.
+        Frequency unit. Accepted values include aliases for microhertz 
+        (e.g., ``"muhz"``) and cycles per day (e.g., ``"1/d"``). Default is 
+        ``"muHz"``.
     use_weights : (bool)
-        Weight data points by 1/lc.flux_err (if available)? Default is
-        True.
+        If true, weight data points by ``1/lc.flux_err`` when available.
+        Default is True.
     rescale_covar : bool, optional
-        Rescale covariance matrix when estimating uncertainties?
-        Default is False.
+        Whether lmfit should rescale the covariance matrix when estimating
+        parameter uncertainties. Default is False.
     ls_method :  str, optional
         Lomb-Scargle method keyword passed to lightkurve LombScarglePeriodogram.
         Default is "fast".
     frequency : array-like, optional
-        Explicit set of frequencies to compute periodogram at. Default
-        is None.
+        Explicit frequency grid on which to calculate periodograms, in
+        ``freq_unit``. Default is None, and sampling frequencies will be chosen.
     oversample_factor : float, optional
-        How many times more densely than the natural frequency resolution
-        of 1/duration to sample frequencies. The default is 5.
+        Number of frequency samples per natural resolution element
+        ``1 / duration``. Default is 5.
     nyquist_factor : float, optional
-        How many time beyond the approximate Nyquist frequency to sample
-        periodograms. The default is 1. Overridden by maxfreq, if provided.
-        Note that the Nyquist frequency is estimated to equal 1/(2*dt),
-        where dt is the median time separation between adjacent samples.
-        This is only valid for evenly sampled data, and may be a very poor
-        approximation for unevenly sampled data.
+        Maximum automatically generated frequency as a multiple of the
+        approximate Nyquist frequency. Default is 1. Ignored when
+        ``maxfreq`` is specified.
     minfreq : float, optional
-        Minimum frequency of range to use. The default is 1/duration.
+        Minimum automatically generated frequency, in ``freq_unit``.
+        Default is 1/duration.
     maxfreq : float, optional
-        Maximum frequency of range to use. The default is based off of
-        nyquist_factor.
+        Maximum automatically generated frequency, in ``freq_unit``.
+        By default it is determined from ``nyquist_factor``.
 
     Attributes
     ----------
-    uptodate : bool
-        Whether the currently fitted model reflects the staged signal
-        parameters.
-    fitvalues : pandas.DataFrame
-        Parameters of the currently fitted signals.
-    lc_model : lightkurve.LightCurve
-        Model evaluated at the observation times.
-    lc_resid : lightkurve.LightCurve
-        Residual light curve after subtracting the fitted model.
+    lc : lightkurve.LightCurve
+        Internal copy of the input light curve. It includes an ``include``
+        column indicating which observations are currently used.
     stagedvalues : pandas.DataFrame
-        Table describing the signal parameters that will be used by the
-        next fit.
+        Signal parameters staged for the next model fit.
     fitvalues : pandas.DataFrame
-        Table describing the best-fit parameters from the most 
-        recent fit.
-    fit_result : lmfit.model.ModelResult
-        Detailed results of most recent model fit.
+        Parameters of the most recently fitted signal model.
+    fit_result : lmfit.model.ModelResult or None
+        Detailed result of the most recent lmfit optimization.
+    uptodate : bool
+        Whether the fitted model reflects the current staged signal
+        parameters and light curve mask.
+    lc_model : lightkurve.LightCurve
+        Current fitted model evaluated at the observation times.
+    lc_resid : lightkurve.LightCurve
+        Residual light curve after subtracting ``lc_model`` from ``lc``.
     freqs : numpy.ndarray
-        Frequency grid on which `per_orig`, `per_model`, and `per_resid`
-        are evaluated, expressed in `freq_unit`.
+        Frequency grid on which the periodograms are evaluated, in
+        ``freq_unit``.
+    fres : float or None
+        Natural frequency resolution used to construct an automatically
+        generated frequency grid. ``None`` when an explicit ``frequency``
+        grid is supplied.
+    oversample_factor : float or None
+        Oversampling factor of an automatically generated frequency grid.
+    nyquist : float
+        Approximate Nyquist frequency, in ``freq_unit``.
+    nyquist_factor : float
+        Ratio of the upper frequency range to the approximate Nyquist
+        frequency.
+    nyquist_quality : float
+        Metric between 0 and 1 characterizing the strength of reflection
+        across the approximate Nyquist frequency.
     per_orig : numpy.ndarray
-        Amplitude periodogram of the original light curve, evaluated on
-        `freqs`. Amplitudes are expressed in `amp_unit`.
+        Amplitude periodogram of the original light curve evaluated on
+        ``freqs``, in ``amp_unit``.
     per_model : numpy.ndarray
-        Amplitude periodogram of the current fitted light-curve model,
-        evaluated on `freqs`. Amplitudes are expressed in `amp_unit`.
+        Amplitude periodogram of the current fitted model evaluated on
+        ``freqs``, in ``amp_unit``.
     per_resid : numpy.ndarray
-        Amplitude periodogram of the residual light curve (data minus 
-        model), evaluated on `freqs`. Inspected for significant signals
-        for prewhitening. Amplitudes are expressed in `amp_unit`.
+        Amplitude periodogram of the residual light curve evaluated on
+        ``freqs``, in ``amp_unit``. This is the primary periodogram used
+        to identify additional signals during prewhitening.
+    noise_spectrum : callable or None
+        Interpolating function giving the estimated local average
+        residual-periodogram amplitude as a function of frequency.
+    significance_multiplier : float or None
+        Multiplier applied to ``noise_spectrum`` to define the current
+        significance threshold.
+    significance_settings : dict or None
+        Settings used to calculate the current significance threshold.
+    autorecalculate : bool
+        Whether the significance threshold is automatically recalculated
+        after the periodogram changes.
+    tshift : float
+        Time offset, in days, applied internally to improve numerical
+        behavior of phase fitting.
+    amp_unit : str
+        Selected amplitude-unit name.
+    amp_conversion : float
+        Conversion factor between internal relative amplitudes and
+        displayed amplitudes.
+    freq_unit : astropy.units.Unit
+        Astropy unit used for frequencies.
+    freq_conversion : float
+        Conversion factor between frequencies in ``freq_unit`` and inverse
+        days.
     log_html : str
-        HTML representation of messages that have been sent to the log
-        so far.
+        HTML representation of messages recorded in the Pyriod log.
     """
     # Generate unique ID for this Pyriod instance
     _id_generator = itertools.count(0)
@@ -204,17 +236,21 @@ class Prewhitener(object):
     ###### initialization functions #######
 
     def _set_units(self, amp_unit=None, freq_unit=None):
-        """Configure units to user's preferences.
+        """Set amplitude and frequency units.
 
         Parameters
         ----------
         amp_unit : str, optional
-            Amplitude unit to use, from ['relative', 'percent', 'ppt',
-                                         'ppm', 'mma']
+            Amplitude unit. Accepted values are ``"relative"``, ``"percent"``,
+            ``"ppt"``, ``"ppm"``, and ``"mma"``.
         freq_unit : str, optional
-            Frequency unit to use, from ['muhz', 'uhz', 'microhertz',
-                                         '1/d', '1/day', 'day',
-                                         'days', 'd', 'per day']
+            Frequency unit. Accepted aliases correspond to microhertz or
+            inverse days.
+
+        Raises
+        ------
+        KeyError
+            If an unsupported amplitude or frequency unit is supplied.
         """
         if amp_unit is not None:
             self.amp_unit = amp_unit
@@ -236,6 +272,7 @@ class Prewhitener(object):
         self.freq_conversion = self.time_unit.to(1/self.freq_unit)
 
     def _set_light_curve(self, lc):
+        """Validate, copy, clean, and initialize the input light curve."""
         # Input must be Lightkurve LightCurve type
         if not issubclass(type(lc), lk.LightCurve):
             raise TypeError('lc must be a lightkurve.LightCurve object.')
@@ -271,6 +308,15 @@ class Prewhitener(object):
     # Class properties to ease and control access to attributes
     @property
     def lc_model(self):
+        """Current fitted model evaluated at the observation times.
+
+        Returns
+        -------
+        lightkurve.LightCurve
+            Light curve containing the mean observed flux plus the current
+            fitted sinusoidal model. The ``include`` column is copied from
+            the analyzed light curve.
+        """
         meanflux = float(np.nanmean(self.lc.flux.value))
         lc = lk.LightCurve(time = self.lc.time,
                            flux = (meanflux + self.sample_model(self.lc.time.value))
@@ -280,6 +326,14 @@ class Prewhitener(object):
     
     @property
     def lc_resid(self):
+        """Residual light curve for the current fitted model.
+
+        Returns
+        -------
+        lightkurve.LightCurve
+            Observed flux minus ``lc_model``, with the original flux
+            uncertainties and ``include`` mask.
+        """
         lc_model = self.lc_model
         lc = lk.LightCurve(time = self.lc.time,
                            flux = self.lc["flux"] - lc_model.flux,
@@ -289,17 +343,39 @@ class Prewhitener(object):
     
     @property
     def fitvalues(self):
-        return self._fitvalues   # read-only
+        """Parameters of the most recently fitted signal model.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Internal fitted-signal table.
+
+        Notes
+        -----
+        Amplitudes are stored internally in relative flux units. Use
+        ``solution_table()`` to obtain a copy with amplitudes converted to
+        the current display unit.
+        """
+        return self._fitvalues.copy() # read-only
 
     @property
     def uptodate(self):
+        """Whether the fitted model matches the currently staged analysis state.
+
+        Returns
+        -------
+        bool
+            True if the staged signal parameters equal the fitted parameters,
+            no signal is awaiting brute-force phase estimation, and the
+            light-curve mask has not changed since the last fit.
+        """
         colcompare = [c for c in self.columns if c != "brute"]
         nobrute = all(~self.stagedvalues["brute"])
         stagedisfit = np.array_equal(self.stagedvalues[colcompare].values, self.fitvalues[colcompare].values)
         return bool(nobrute and stagedisfit and not self._lcchanged)
 
     def _init_log(self):
-        """Set up stuff needed for the Log."""
+        """Initialize the logger and in-memory log buffer for this instance."""
         # Make unique ID number for this session to send messages to correct log
         self.id = next(self._id_generator)
         self._logger = logging.getLogger(f'Pyriod Logger {self.id}')
@@ -315,15 +391,14 @@ class Prewhitener(object):
         self.log(f'Initiating Pyriod instance {self.id}.')
     
     def log(self, message, level='info'):
-        """Record a message in the Log.
+        """Record a message in the Pyriod log.
 
         Parameters
         ----------
         message : str
-            The message to record in the log.
-        level : TYPE, optional
-            Message level/type. Options are 'debug', 'info', 'warning',
-            'error', and 'critical'. The default is 'info'.
+            Message to record.
+        level : {"debug", "info", "warning", "error", "critical"}, optional
+            Logging level. Default is ``"info"``.
         """
         logdict = {
             'debug': self._logger.debug,
@@ -338,6 +413,13 @@ class Prewhitener(object):
 
     @property
     def log_html(self):
+        """HTML representation of the current Pyriod log.
+
+        Returns
+        -------
+        str
+            Escaped log contents enclosed in a ``<pre>`` element.
+        """
         raw_log = self._log_capture_string.getvalue()
         return ("<pre style='white-space: pre-wrap; "
                 "font-family: monospace; "
@@ -346,7 +428,7 @@ class Prewhitener(object):
                 "</pre>")
 
     def _log_lc_properties(self):
-        """If lc has metadata, put it in the log."""
+        """Write available light curve metadata to the Pyriod log."""
         keys = self.lc.meta.keys()
         if len(keys) > 0:
             self.log("The provided light curve has the following metadata:")
@@ -354,7 +436,13 @@ class Prewhitener(object):
                 self.log(f"{key}: {self.lc.meta[key]}")
 
     def _log_per_properties(self, per):
-        """Capture periodogram properties in log."""
+        """Write Lightkurve periodogram properties to the Pyriod log.
+
+        Parameters
+        ----------
+        per : lightkurve.periodogram.Periodogram
+            Periodogram whose properties are to be logged.
+        """
         try:
             with Capturing() as output:
                 per.show_properties()
@@ -366,50 +454,44 @@ class Prewhitener(object):
 
     def set_frequency_sampling(self, frequency=None, oversample_factor=5,
                                nyquist_factor=1, minfreq=None, maxfreq=None):
-        """Set the frequency sampling for periodograms.
+        """Set the frequency grid used for subsequent periodograms.
 
-        The frequency sampling to use for periodograms can be set:
-
-        * explicitly via the frequency keyword,
-        * with a set oversampling factor out to a multiple of the
-          approximate Nyquist frequency (see further comments about this),
-        * with a set oversampling factor between a minimum and maximum
-          frequency.
+        The grid may be supplied explicitly or generated at a specified
+        oversampling factor over an automatically or explicitly bounded
+        frequency range.
 
         Parameters
         ----------
-        frequency : array, optional
-            Explicit set of frequencies to compute periodogram at. The default
-            is None, and this function will choose a frequency array.
+        frequency : array-like, optional
+            Explicit frequency samples, in ``freq_unit``. If provided,
+            ``oversample_factor``, ``minfreq``, and ``maxfreq`` are not used
+            to construct the grid.
         oversample_factor : float, optional
-            How many times more densely than the natural frequency resolution
-            of 1/duration to sample frequencies. The default is 5.
+            Number of samples per natural frequency-resolution element
+            ``1 / duration``. Default is 5.
         nyquist_factor : float, optional
-            How many time beyond the approximate Nyquist frequency to sample
-            periodograms. The default is 1. Overridden by maxfreq, if provided.
-            Note that the Nyquist frequency is estimated to equal 1/(2*dt),
-            where dt is the median time separation between adjacent samples.
-            This is only valid for evenly sampled data, and may be a very poor
-            approximation for unevenly sampled data.
+            Upper limit of an automatically generated grid as a multiple of
+            the approximate Nyquist frequency. Default is 1. Overridden by
+            ``maxfreq``.
         minfreq : float, optional
-            Minimum frequency of range to use. The default is 1/duration.
+            Minimum frequency of an automatically generated grid, in
+            ``freq_unit``. Default is the natural frequency resolution.
         maxfreq : float, optional
-            Maximum frequency of range to use. The default is based off of
-            nyquist_factor.
+            Maximum frequency of an automatically generated grid, in
+            ``freq_unit``. By default it is determined from
+            ``nyquist_factor``.
 
         Notes
         -----
-        This function sets Prewhitener attribute `freqs` to the frequencies 
-        that will be used to compute future periodograms. If you want to
-        recalculate the original periodogram, `per_orig`, call
-        `compute_pers(orig=True)`.
-        
-        The Nyquist frequency is estimated to equal 1/(2*dt), where
-        dt is the median time separation between adjacent samples. This is only
-        valid for evenly sampled data, and may be a very poor approximation for
-        unevenly sampled data. The attribute `nyquist_quality` records,
-        between 0-1, how strongly signals are reflected across the Pyriod
-        attribute `nyquist`.
+        This method updates ``freqs`` but does not automatically recalculate
+        ``per_orig``. Call ``compute_pers(orig=True)`` to recalculate the
+        original-light-curve periodogram on the new grid.
+
+        The approximate Nyquist frequency is calculated as ``1 / (2 dt)``,
+        where ``dt`` is the median separation between adjacent observations.
+        This is exact only for evenly sampled data. ``nyquist_quality`` provides
+        a measure between 0 and 1 of how strongly the sampling produces
+        reflection about this approximate Nyquist frequency.
         """
         # Approximate Nyquist frequency (exact only for evenly sampled data)
         dt = np.median(np.diff(np.sort(self.lc.time.value)))
@@ -422,6 +504,8 @@ class Prewhitener(object):
         y = np.sin(2*np.pi*nyqphase)
         x = np.cos(2*np.pi*nyqphase)
         self.nyquist_quality = np.sqrt(np.mean(x)**2.+np.mean(y)**2.)
+        # Frequency resolution
+        self.fres = 1./(self.freq_conversion*np.ptp(self.lc.time.value))
         # Are we using user-speficied frequencies?
         if frequency is not None:
             self.log(f'Using user supplied frequency sampling: '
@@ -429,12 +513,9 @@ class Prewhitener(object):
                      f'{np.min(frequency)} and {np.max(frequency)} '
                      f'{self._freq_label}')
             self.freqs = frequency
-            self.fres = None
             self.oversample_factor = None
             self.nyquist_factor = np.max(frequency)/self.nyquist
         else: # If making our own frequency grid
-            # Frequency resolution
-            self.fres = 1./(self.freq_conversion*np.ptp(self.lc.time.value))
             self.oversample_factor = oversample_factor
             self.nyquist_factor = nyquist_factor
             if minfreq is None:
@@ -448,7 +529,18 @@ class Prewhitener(object):
 
     # Functions for interacting with model fit below
     def _next_signal_index(self, n=1):
-        """Get next n unused independent signal indices."""
+        """Return the next unused independent-signal labels.
+
+        Parameters
+        ----------
+        n : int, optional
+            Number of labels to generate. Default is 1.
+
+        Returns
+        -------
+        list of str
+            Unused labels of the form ``"f#"``.
+        """
         inds = []
         i = 0
         while len(inds) < n:
@@ -460,40 +552,49 @@ class Prewhitener(object):
     def add_signal(self, freq, amp=None, phase=None, fixfreq=False,
                    fixamp=False, fixphase=False, include=True, brute=True,
                    index=None):
-        """Make a new sinusoidal signal available to the model to be fit.
+        """Stage one or more independent sinusoidal signals for fitting.
 
-        Can be used to add an individual or multiple signals. Pass single
-        values for a single signal. For multiple, pass iterables of values.
-        Any scaler values provided will be copied for all of multiple signals.
+        Scalar arguments may be supplied for a single signal. For multiple
+        signals, iterable arguments may be supplied; scalar values are repeated
+        as needed.
 
         Parameters
         ----------
-        freq : float (or iterable of floats)
-            Initial fit frequency of new signal(s).
-        amp : float (or iterable of floats), optional
-            Initial amplitude of new signal(s). The default is None. If None,
-            starting amplitude with be set to 1.
-        phase : float (or iterable of floats), optional
-            Starting phase of new signals. The default is None.
-        fixfreq : bool (or iterable of bools), optional
-            Don't allow frequency to vary when fitting? The default is False.
-        fixamp : bool (or iterable of bools), optional
-            Don't allow amplitude to vary when fitting? The default is False.
-        fixphase : bool (or iterable of bools), optional
-            Don't allow phase to vary when fitting? The default is False.
-        include : bool (or iterable of bools), optional
-            Include this signal in the next model evaluation? The default is
+        freq : float or array-like of float
+            Initial signal frequencies, in ``freq_unit``.
+        amp : float or array-like of float, optional
+            Initial signal amplitudes, in ``amp_unit``.
+        phase : float or array-like of float, optional
+            Initial phases, expressed in cycles.
+        fixfreq : bool or array-like of bool, optional
+            If True, hold the corresponding frequency fixed during fitting.
+            Default is False.
+        fixamp : bool or array-like of bool, optional
+            If True, hold the corresponding amplitude fixed during fitting.
+            Default is False.
+        fixphase : bool or array-like of bool, optional
+            If True, hold the corresponding phase fixed during fitting.
+            Default is False.
+        include : bool or array-like of bool, optional
+            Whether to include each signal in the next model fit. Default is
             True.
-        brute : bool (or iterable of bools), optional
-            Brute force estimate phase? The default is True.
-        index : str, optional
-            Label to use for signal. Defaults to next available 'f#'.
-            Duplicating an existing index label raises ValueError.
+        brute : bool or array-like of bool, optional
+            Whether to estimate the initial phase by brute-force sampling
+            before fitting. Default is True.
+        index : str or iterable of str, optional
+            Signal label or labels. Missing labels are assigned the next
+            available independent-signal labels of the form ``"f#"``.
 
         Raises
         ------
         ValueError
-            If index provided duplicates existing index.
+            If duplicate labels are supplied or a supplied label already
+            exists in ``stagedvalues``.
+
+        Notes
+        -----
+        Signals are added to ``stagedvalues`` and do not become part of the
+        fitted model until ``fit_model()`` is called.
         """
         freq, amp, phase, fixfreq, fixamp, fixphase, include, brute, index = (
             make_all_iter([freq, amp, phase, fixfreq, fixamp, fixphase,
@@ -529,9 +630,7 @@ class Prewhitener(object):
                  f"{freq} and amplitude {amp}.")
 
     def _combination_to_lmfit_expr(self, combostr, prefixmap):
-        """
-        Convert 'f0+2*f1' into an lmfit expression like 'f0freq+2*f1freq'.
-        """
+        """Return a lmfit parameter expression for combination expression."""
         known_labels = set(map(str.lower, self.stagedvalues.index))
         if not validate_combination(combostr, known_labels):
             raise ValueError(f"Invalid combination expression: {combostr}")
@@ -547,51 +646,47 @@ class Prewhitener(object):
         return "".join(converted)
 
     def _valid_combo(self, combostr):
-        """Check that provided combination string is a valid expression."""
+        """Return whether a combination expression is valid."""
         known_labels = set(map(str.lower, self.stagedvalues.index))
         return validate_combination(combostr, known_labels)
 
     def add_combination(self, combostr, amp=None, phase=None, fixamp=False,
-                        fixphase=False, include=True, brute=True,
-                        index=None):
-        """Make a new combination signal available to the model to be fit.
+                        fixphase=False, include=True, brute=True):
+        """Stage one or more combination-frequency signals for fitting.
 
-        Add an individual or multiple combination signals with frequencies
-        defined arithmetically in terms of existing signals. Pass single
-        values for a single signal. For multiple, pass iterables of values.
-        Any scaler values provided will be copied for all of multiple signals.
+        Combination frequencies are defined by arithmetic expressions involving
+        existing staged signal labels. The combination expression is also used
+        as the signal label.
 
         Parameters
         ----------
-        combostr : str (or iterable of str)
-            Arithmetic expression for signal frequency terms of existing signal
-            indices.
-        amp : float (or iterable of floats), optional
-            Initial amplitude of new signal(s). The default is None. If None,
-            starting amplitude with be set to 1.
-        phase : float (or iterable of floats), optional
-            Starting phase of new signals. The default is None.
-        fixamp : bool (or iterable of bools), optional
-            Don't allow amplitude to vary when fitting? The default is False.
-        fixphase : bool (or iterable of bools), optional
-            Don't allow phase to vary when fitting? The default is False.
-        include : bool (or iterable of bools), optional
-            Include this signal in the next model evaluation? The default is
-            True.
-        brute : bool (or iterable of bools), optional
-            Brute force estimate phase? The default is True.
-        index : str, optional
-            Label to use for signal. Defaults to next available 'f#'.
-            Duplicating an existing index label raises ValueError.
+        combostr : str or iterable of str
+            Arithmetic expression or expressions defining frequencies in terms
+            of existing staged signal labels, for example ``"f0+f1"``.
+        amp : float or iterable of float, optional
+            Initial amplitude in ``amp_unit``. If None, the amplitude is
+            initialized by interpolating ``per_resid`` at the combination
+            frequency.
+        phase : float or iterable of float, optional
+            Initial phase in cycles.
+        fixamp : bool or iterable of bool, optional
+            If True, hold amplitude fixed during fitting. Default is False.
+        fixphase : bool or iterable of bool, optional
+            If True, hold phase fixed during fitting. Default is False.
+        include : bool or iterable of bool, optional
+            Whether to include the signal in the next fit. Default is True.
+        brute : bool or iterable of bool, optional
+            Whether to estimate the initial phase by brute-force sampling.
+            Default is True.
 
         Notes
         -----
-        Invalid combination expressions are not raised as exceptions. An error
-        message is written to the Pyriod log and no signal is added.
+        Invalid combination expressions are reported to the Pyriod log and no
+        combination signal is added.
         """
-        combostr, amp, phase, fixamp, fixphase, include, brute, index = (
+        combostr, amp, phase, fixamp, fixphase, include, brute = (
             make_all_iter([combostr, amp, phase, fixamp, fixphase,
-                                 include, brute, index]))
+                                 include, brute]))
         freq = np.zeros(len(combostr)) # Initial evaulation of provided expressions
 
         freq_lookup = {
@@ -613,25 +708,24 @@ class Prewhitener(object):
             self.log(f"Invalid combination string provided in {combostr}.","error")
 
     def _brute_phase_est(self, freq, amp, brute_step=0.1):
-        """Estimate phase by brute force sampling.
+        """Estimate a signal phase by brute-force sampling.
 
-        Fits a single sinusoid to residuals, sampling phase between 0-1 in
-        steps of brute_step.
+        A single sinusoid with fixed frequency and amplitude is fit to the
+        current residuals while phase is sampled between 0 and 1 cycle.
 
         Parameters
         ----------
         freq : float
-            Fixed sinusoid frequency for phase estimation.
+            Fixed signal frequency, in ``freq_unit``.
         amp : float
-            Fixed sinusoid amplitude for phase estimation.
+            Fixed signal amplitude in internal relative-flux units.
         brute_step : float, optional
-            Step size in phase between 0 and 1. The default is 0.1.
+            Phase-grid spacing in cycles. Default is 0.1.
 
         Returns
         -------
         float
-            Estimated phase (multiple of brute_step between 0 and 1)
-
+            Estimated phase in cycles.
         """
         model = Model(sin)
         params = model.make_params()
@@ -650,17 +744,27 @@ class Prewhitener(object):
         return result.params['phase'].value
 
     def fit_model(self):
-        """Optimize fit for model with all included signals.
+        """Fit the staged sinusoidal model to the light curve.
 
-        The model fit is optimized with the lmfit package. The model is a sum
-        of sinusoids, one for each included signal. Initial fitting values are
-        taken from the `stagedvalues` attribute. New signals (or those with 
-        `brute=True` set) will have an initial phase estimated
-        from brute-force sampling. The frequencies of combination signals are
-        constrained to relate to independent signal frequencies following
-        arithmetic expressions. The new best-fit parameters are stored in the
-        `fitvalues` attribute, and the lmfit report is stored in the `fit_result`
-        attribute. Computes new periodograms for the model and residuals.
+        The model is a sum of all signals in ``stagedvalues`` for which
+        ``include`` is True. Initial parameter values are taken from
+        ``stagedvalues``. Signals marked with ``brute=True`` have their initial
+        phase estimated by brute-force sampling before optimization.
+
+        Independent signals are represented by free or fixed sinusoidal
+        parameters. Combination-signal frequencies are constrained through
+        lmfit expressions relating them to their constituent independent
+        frequencies.
+
+        After a successful fit, fitted parameters are stored in ``fitvalues``
+        and the complete lmfit result is stored in ``fit_result``. The model
+        and residual periodograms are then recalculated.
+
+        Notes
+        -----
+        If no signals are included, no optimization is performed and the fitted
+        solution is reset to an empty table. If all included parameters are
+        fixed, a warning is written to the log and no optimization is performed.
         """
         # Check that there are signals in the model
         if np.sum(self.stagedvalues.include.values) == 0:
@@ -764,7 +868,7 @@ class Prewhitener(object):
         self.compute_pers()
 
     def _update_values_from_fit(self, params, prefixmap):
-        """Update dataframe of params with new values from fit."""
+        """Update fitted and staged signal tables from an lmfit result."""
         # Also rectify and negative amplitudes or phases outside [0,1)
         self._fitvalues = self.stagedvalues.astype(
             dtype=dict(zip(self.columns, self.dtypes))).drop('brute', axis=1)
@@ -808,7 +912,7 @@ class Prewhitener(object):
         self.stagedvalues = tempdf
 
     def _update_signal_snr(self):
-        # Add periods and period uncertainties
+        """Update fitted signal-to-noise ratios from the current noise spectrum."""
         if ((self.noise_spectrum is not None) &
             (self.significance_multiplier is not None)):
             self._fitvalues['snr'] = (
@@ -816,23 +920,22 @@ class Prewhitener(object):
                 self.noise_spectrum(self._fitvalues['freq']))
 
     def solution_table(self, display_units=True, include_brute=True):
-        """Return a copy of the current fitted signal parameters.
+        """Return a copy of the current fitted signal table.
 
         Parameters
         ----------
         display_units : bool, optional
-            If True, convert the ``amp`` and ``amperr`` columns to the current
-            display amplitude unit using ``amp_conversion``. If False, return
-            amplitudes in the internal fitting units. Default is True.
+            If True, express ``amp`` and ``amperr`` in ``amp_unit``. If False,
+            leave them in internal relative-flux units. Default is True.
         include_brute : bool, optional
-            If True, include a ``brute`` column in the returned table. The
-            column is set to False for all fitted signals. Default is True.
+            If True, include a ``brute`` column containing False for every
+            fitted signal. Default is True.
 
         Returns
         -------
         pandas.DataFrame
-            Copy of the current fitted signal table. The returned table can be
-            modified without changing the internal fitted values.
+            Copy of the fitted signal table. Modifying the returned table does
+            not modify the internally stored fitted values.
         """
         table = self._fitvalues.copy()
 
@@ -874,20 +977,28 @@ class Prewhitener(object):
         return table
 
     def _set_stagedvalues(self, df):
+        """Replace the staged signal table with ``df``."""
         self.stagedvalues = df
 
     def sample_model(self, time):
-        """Sample the current best-fit model at desired times.
+        """Evaluate the current fitted signal model at specified times.
 
         Parameters
         ----------
-        time : iterable
-            Time of samples in units of days.
+        time : array-like
+            Times at which to evaluate the model, in days.
 
         Returns
         -------
-        flux : array
-            Model evaluated at provided times, in units of input time series.
+        numpy.ndarray
+            Sum of the currently included fitted sinusoids evaluated at the
+            requested times, in the numerical flux units of the input light
+            curve.
+
+        Notes
+        -------
+        Evaluates the sinusoidal variations only and does not include an
+        additive offset to match mean light curve flux.
         """
         flux = np.zeros(len(time))
         for prefix in self._fitvalues.index[self._fitvalues.include]:
@@ -906,21 +1017,20 @@ class Prewhitener(object):
               'float', 'bool', 'bool', 'float']
 
     def remove_signals(self, indices):
-        """
-        Drop provided indices from ``stagedvalues`` table.
-
-        Any combination signals that are defined in terms of removed signals
-        will also be removed.
+        """Remove signals from the staged solution.
 
         Parameters
         ----------
-        indices : str, or iterable of str
-            Indices to drop from stagedvalues.
+        indices : str or iterable of str
+            Signal label or labels to remove from ``stagedvalues``.
 
         Notes
-        -------
-        Signals will not be dropped from the current model until a new fit is
-        performed.
+        -----
+        Combination signals that depend on a removed signal are also removed.
+        Missing labels produce a warning in the Pyriod log.
+
+        Removing a staged signal does not remove it from the current fitted
+        model until ``fit_model()`` is called.
         """
 
         # Accept a single string, a pandas Index, list, tuple, or ndarray.
@@ -949,11 +1059,21 @@ class Prewhitener(object):
         self._void_combos()
     
     def delete_rows(self, indices):
-        """Backward-compatible alias for remove_signals()."""
+        """Remove signals from the staged solution.
+
+        Deprecated alias for :meth:`remove_signals`.
+
+        Parameters
+        ----------
+        indices : str or iterable of str
+            Signal label or labels to remove.
+        """
+        warnings.warn("The 'delete_rows' function is deprecated and will be removed in a future version. " \
+                      "Use 'remove_signals' instead.", DeprecationWarning)
         return self.remove_signals(indices)
 
     def _void_combos(self):
-        #remove all invalid combinations
+        """Remove staged combination signals that are no longer valid."""
         isindep = lambda key: key[1:].isdigit()
         depkeys = []
         for key in self.stagedvalues.index:
@@ -961,56 +1081,69 @@ class Prewhitener(object):
                 self.remove_signals(key)
 
     def _initialize_dataframe(self):
-        """Create new empty signals dataframe."""
+        """Create an empty signal-parameter table.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Empty DataFrame with the standard Pyriod signal columns and dtypes.
+        """
         df = (pd.DataFrame(columns=self.columns)
               .astype(dtype=dict(zip(self.columns, self.dtypes))))
         return df
     
     def mask_indices(self, indices, threshold=30):
-        """Mask selected light curve points by index.
+        """Mask selected light-curve points by index.
 
         Parameters
         ----------
         indices : array-like of int
-            Indices of the light curve points to exclude from the analysis.
-            The corresponding values in the "include" column of ``lc`` are
-            set to False.
+            Indices of observations to exclude from the analysis. Their
+            ``include`` values in ``lc`` are set to False.
         threshold : int, optional
-            Maximum number of array elements to display before abbreviating the
-            index list in the log message. Passed to numpy.array2string.
-            Default is 30.
+            Array-printing threshold used when recording the selected indices
+            in the log. Passed to ``numpy.array2string``. Default is 30.
 
         Notes
-        ----------
-        If no indices are provided, no mask is changed and a warning is written
-        to the Pyriod log. Periodograms are updated. To un-mask data, use ``clear_mask``.
+        -----
+        If no indices are supplied, the mask is unchanged and a warning is
+        written to the Pyriod log.
+
+        Changing the mask recalculates the time shift and periodograms and
+        causes ``uptodate`` to become False until the model is refitted.
+        Use ``clear_mask()`` to restore all observations.
         """
         indices = np.asarray(indices, dtype=int)
         if indices.size == 0:
-            self.log("No points provided to be masked.", level="warning")
+            self.log("No time series points provided to be masked.", level="warning")
             return
-        self.log(f"Masking {len(indices)} selected points: "+
+        self.log(f"Masking {len(indices)} selected time series points: "+
                  f"{np.array2string(indices,threshold=threshold)}")
         self.lc["include"][indices] = 0
         self._mask_changed()
 
     def clear_mask(self):
-        """Un-mask all data points in the light curve.
+        """Restore all masked light-curve points.
 
-        All values in the "include" column of ``lc`` are set to True.
-        Periodograms are updated.
+        All values in the ``include`` column of ``lc`` are set to True. The
+        time shift and periodograms are recalculated, and the fitted model is
+        marked as out of date until it is refitted.
         """
-        self.log("Restoring all masked points.")
-        self.lc["include"][:] = 1
-        self._mask_changed()
+        if np.any(self.lc["include"][:] != 1):
+            self.log("Restoring all masked points.")
+            self.lc["include"][:] = 1
+            self._mask_changed()
+        else:
+            self.log("'clear_mask' called but no time series points were masked.", level="warning")
 
     def _mask_changed(self):
+        """Update derived state after the light-curve inclusion mask changes."""
         self._calc_tshift()
         self.compute_pers(orig=True)
         self._lcchanged = True
 
     def _calc_tshift(self, tshift=None):
-        # Subtracting the mean time stabilizes phase fitting.
+        """Set the time offset used to stabilize phase fitting."""
         if tshift is None:
             good = np.where(self.lc["include"])
             self.tshift = -np.mean(self.lc[good].time.value)
@@ -1020,17 +1153,24 @@ class Prewhitener(object):
                  f'given timestamps by `tshift` {self.tshift} days.')
 
     def compute_pers(self, orig=False):
-        """Compute periodograms of the various time series.
+        """Recalculate model and residual amplitude periodograms.
+
+        The periodograms are evaluated on ``freqs`` using only observations
+        whose ``include`` value is True. ``per_model`` and ``per_resid`` are
+        always recalculated.
 
         Parameters
         ----------
         orig : bool, optional
-            Whether it also (re)calculate the periodogram of the original time
-            series. The default is False.
+            If True, also recalculate ``per_orig`` for the currently included
+            observations. Default is False.
 
-        Returns
-        -------
-        None.
+        Notes
+        -----
+        The resulting amplitude arrays are stored in ``per_model`` and
+        ``per_resid`` in ``amp_unit``. If ``orig=True``, ``per_orig`` is also
+        updated. The significance threshold is subsequently recalculated when
+        ``autorecalculate`` is True.
         """
         good = np.where(self.lc["include"])
         if orig:  # Compute periodogram of original time series
@@ -1067,40 +1207,44 @@ class Prewhitener(object):
                                          winwidth=100, avgtype="mean",
                                          autorecalculate = False,
                                          **kwargs):
-        """
-        Calculate amplitude threshold for considering a signal to be
-        significant. There are two parts: self.noise_spectrum is an
-        interpolation function for the average (mean or median) amplitude
-        calculated in a moving frequency window across the residuals
-        periodogram; and self.significance_multiplier is a scaling factor for
-        converting this to a significance threshold. Settings used for the
-        current threshold stored in ``significance_settings`` dict.
+        """Estimate a frequency-dependent amplitude significance threshold.
+
+        The local noise level is estimated from the mean or median amplitude in
+        moving windows across ``per_resid``. An interpolating function describing
+        this noise spectrum is stored in ``noise_spectrum``. Multiplying it by
+        ``multiplier`` gives the significance threshold.
 
         Parameters
         ----------
         multiplier : float, optional
-            Factor above local average to multiply significance threshold by.
-            The default is 5.
+            Factor by which the local noise estimate is multiplied to define
+            the significance threshold. Default is 5.
         startfreq : float, optional
-            Lowest frequency to start calculation. The default is 0. The first
-            averaging window will be centered on this frequency.
+            Frequency at the center of the first averaging window, in
+            ``freq_unit``. Default is 0.
         endfreq : float, optional
-            Highest frequency for calculating significance threshold. The last
-            averaging window will be centered on this frequency. The default is
-            None, corresponding to the highest frequency in the periodogram.
+            Upper limit for centers of averaging windows, in ``freq_unit``.
+            Default is the highest sampled frequency.
         freqstep : float, optional
-            Window step size in frequency units. The default is 100.
+            Separation between averaging-window centers, in ``freq_unit``.
+            Default is 100.
         winwidth : float, optional
-            Width of averaging window in frequency units. The default is 100.
-        avgtype : str, optional
-            "mean" or "median". The default is "mean".
+            Width of each averaging window, in ``freq_unit``. Default is 100.
+        avgtype : {"mean", "median"}, optional
+            Statistic used to estimate the local periodogram amplitude.
+            Default is ``"mean"``.
         autorecalculate : bool, optional
-            recalculate threshold with these settings each time periodogram changes.
-            
-        **kwargs :
-            keyword arguments passed to interpolate function. `fill_value`
-            determines how or whether to extrapolate beyond sampled frequency
-            range.
+            If True, recalculate the threshold with these settings whenever
+            the periodogram changes. Default is False.
+        **kwargs
+            Additional keyword arguments passed to ``scipy.interpolate.interp1d``.
+            If ``fill_value`` is omitted, ``"extrapolate"`` is used.
+
+        Notes
+        -----
+        The settings used for the calculation are stored in
+        ``significance_settings``. Signal-to-noise ratios in the fitted signal
+        table are updated using the resulting noise spectrum.
         """
         # Store arguments for reference or recalculation
         self.significance_settings = {"multiplier":multiplier, 
@@ -1110,6 +1254,7 @@ class Prewhitener(object):
                                       "winwidth":winwidth,
                                       "avgtype":avgtype,
                                       "autorecalculate":autorecalculate}
+        self.autorecalculate = autorecalculate
 
         if endfreq is None:
             endfreq = np.max(self.freqs)
@@ -1149,6 +1294,7 @@ class Prewhitener(object):
         self._update_signal_snr()
 
     def _recalculate_significance_threshold(self):
+        """Recalculate the significance threshold when enabled."""
         if (self.autorecalculate & (self.noise_spectrum is not None) &
                                    (self.significance_multiplier is not None) &
                                    (self.significance_settings is not None)):
@@ -1162,26 +1308,39 @@ class Prewhitener(object):
                                                 autorecalculate=ss["autorecalculate"])
 
     def save_solution(self, filename='Pyriod_solution.csv'):
-        """Save current signal solution as csv file.
+        """Save the current fitted signal solution to a CSV file.
 
         Parameters
         ----------
-        filename : str, optional
-            Filename for saving signals solutions as csv file. The default is
-            'Pyriod_solution.csv'.
+        filename : str or path-like, optional
+            Output CSV filename. Default is ``"Pyriod_solution.csv"``.
+
+        Notes
+        -----
+        Amplitudes and amplitude uncertainties are written in the current
+        display amplitude unit.
         """
         self.log("Writing signal solution to " + os.path.abspath(filename))
         self.solution_table(display_units=True).to_csv(filename,
                                                   index_label='label')
 
     def load_solution(self, filename='Pyriod_solution.csv'):
-        """Load a saved signal solution from a csv file.
+        """Load a saved signal solution and stage it for fitting.
 
         Parameters
         ----------
-        filename : str, optional
-            Filename of csv file to load saved signals solution from. The
-            default is 'Pyriod_solution.csv'.
+        filename : str or path-like, optional
+            CSV file containing a solution previously written by
+            ``save_solution()``. Default is ``"Pyriod_solution.csv"``.
+
+        Notes
+        -----
+        Loaded amplitudes are interpreted in the current ``amp_unit`` and
+        converted to internal units. The loaded values replace
+        ``stagedvalues`` but are not fitted automatically.
+
+        If the file does not exist, an error is written to the Pyriod log and
+        no exception is raised.
         """
         if os.path.exists(filename):
             loaddf = pd.read_csv(filename, index_col='label')
@@ -1197,15 +1356,16 @@ class Prewhitener(object):
                      + ". File not found.\n", level='error')
 
     def save_log(self, filename, overwrite=False):
-        """Save log to text file.
+        """Write the Pyriod log to a text file.
 
         Parameters
         ----------
-        filename : str, optional
-            Filename for saving the log.
+        filename : str or path-like
+            Output filename.
         overwrite : bool, optional
-            Whether to overwrite an existing log named filename. The default is
-            False.
+            If True, replace an existing file. If False, append the current log
+            to an existing file, or create the file if it does not exist.
+            Default is False.
         """
         logmessage = "Writing log to "+os.path.abspath(filename)
         if overwrite:
@@ -1221,28 +1381,31 @@ class Prewhitener(object):
     ### Advanced Features ###
 
     def spectral_window(self, maxfreq=100, osample=10):
-        """Compute the spectral window for these data.
+        """Calculate the spectral window of the included observations.
 
-        This method uses the discrete Fourier transform instead of the fast
-        Lomb-Scargle implementation that the rest of Pyriod uses, in order to
-        accurately represent the spectral window.
+        The spectral window is evaluated with a direct discrete Fourier
+        transform rather than the Lomb-Scargle implementation used for the
+        Pyriod periodograms.
 
         Parameters
         ----------
         maxfreq : float, optional
-            Maximum frequency to calculate the spectral window out to. The
-            default is 100.
+            Maximum frequency to evaluate, in ``freq_unit``. Default is 100.
         osample : float, optional
-            The oversample factor to compute the spectral window with, relative
-            to the natural frequency resolution of 1/(time span of the data).
-            The default is 10.
+            Oversampling factor relative to the natural frequency resolution.
+            Default is 10.
 
         Returns
         -------
-        freqvec : array
-            Frequencies where spectral window was calculated.
-        ampvec : array
-            Corresponding amplitude of the spectral window.
+        freqvec : numpy.ndarray
+            Frequencies at which the spectral window was evaluated, in
+            ``freq_unit``.
+        ampvec : numpy.ndarray
+            Corresponding normalized spectral-window amplitudes.
+
+        Notes
+        -----
+        Only light curve observations whose ``include`` value is True are used.
         """
         # Compute spectral window with DFT
         # Define the window function
