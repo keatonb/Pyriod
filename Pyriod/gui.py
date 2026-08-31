@@ -75,7 +75,7 @@ class PyriodGUI:
         self._init_timeseries_widgets()
         self._init_timeseries_figures()
         self._init_periodogram_widgets()
-        self._init_peridogram_figures()
+        self._init_periodogram_figures()
         self._init_signals_qgrid()
         self._init_signals_widgets()
         self._init_log_widgets()
@@ -83,7 +83,7 @@ class PyriodGUI:
 
     ## Initialize Widgets
     def _init_timeseries_widgets(self):
-        """Set up Time Series widgets."""
+        """Create widgets used by the time-series interface."""
         # Plot location file chooser
         self._tsfig_file_location = FileChooser(
             os.getcwd(),
@@ -143,7 +143,7 @@ class PyriodGUI:
         self._select_fold_freq.observe(self._fold_freq_selected, 'value')
 
     def _init_periodogram_widgets(self):
-        """Set up Periodogram widgets."""
+        """Create widgets used by the periodogram interface."""
         # Plot location file chooser
         self._perfig_file_location = FileChooser(
             os.getcwd(),
@@ -310,7 +310,7 @@ class PyriodGUI:
         self._sig_calculate_button.on_click(self._sig_thresh_from_gui)
 
     def _init_signals_qgrid(self):
-        """Define QGrid column properties."""
+        """Configure and create the editable staged-signal QGrid."""
         # Overall grid options
         self._gridoptions = {
             # SlickGrid options
@@ -358,13 +358,14 @@ class PyriodGUI:
         self._signals_qgrid.on('cell_edited', self._qgrid_changed_manually)
 
     def _get_qgrid(self):
+        """Create a QGrid displaying the currently staged signal table."""
         display_df = self.pw.staged_table(display_units=True)
         return qgrid.show_grid(display_df, show_toolbar=False, precision=9,
                                grid_options=self._gridoptions,
                                column_definitions=self._column_definitions)
 
     def _init_signals_widgets(self):
-        """Set up Signals widgets."""
+        """Create widgets used by the signal-table interface."""
         # Button to delete selected signal rows
         self._delete = widgets.Button(
             description='Delete selected',
@@ -414,6 +415,7 @@ class PyriodGUI:
 
 
     def _init_log_widgets(self):
+        """Create widgets used by the log interface."""
         self._log = widgets.HTML(
             value='Log',
             placeholder='Log',
@@ -453,6 +455,7 @@ class PyriodGUI:
 
     ## Initialize figures
     def _init_timeseries_figures(self):
+        """Create the interactive time series figure and masking selector."""
         self.lcfig, self.lcax = plt.subplots(
             figsize=(7, 2), num='Time Series ({:d})'.format(self.pw.id))
         self.lcax.set_position([0.13, 0.22, 0.85, 0.76])
@@ -470,6 +473,7 @@ class PyriodGUI:
         self._init_viewport_model_plot()
     
     def _set_timeseries_plot_labels(self):
+        """Update time series axis labels for the current display mode."""
         # Light curve labels
         try:
             if self._fold.value:
@@ -482,6 +486,7 @@ class PyriodGUI:
         self.lcfig.canvas.draw_idle()
 
     def _init_viewport_model_plot(self):
+        """Initialize viewport-dependent plotting of the fitted model."""
         # Create the line once. Do not recreate it on every zoom/pan.
         self._lcplot_model, = self.lcax.plot([np.min(self.pw.lc.time.value),
                                               np.max(self.pw.lc.time.value)], 
@@ -505,14 +510,17 @@ class PyriodGUI:
         self._update_sampled_model()
 
     def _request_model_line_update(self, ax=None):
+        """Request a debounced update of the displayed model line."""
         self._model_update_timer.stop()
         self._model_update_timer.start()
 
     def _update_sampled_model(self):
+        """Invalidate and request an update of the displayed sampled model."""
         self._last_model_xlim = None
         self._request_model_line_update()
 
     def _refresh_model_line_from_view(self):
+        """Recalculate the fitted-model line over the visible time range."""
         if self._fold.value: # don't display folded model
             return
 
@@ -544,7 +552,19 @@ class PyriodGUI:
         self.lcfig.canvas.draw_idle()
 
     def _make_model_time_grid(self, xmin, xmax):
-        # Sample the model sensibly within the current viewport
+        """Construct a sampling grid for plotting the model in the visible range.
+
+        Parameters
+        ----------
+        xmin, xmax : float
+            Limits of the visible time range.
+
+        Returns
+        -------
+        numpy.ndarray
+            Time samples sufficient to resolve the highest-frequency fitted
+            signal, subject to the configured plotting-point limit.
+        """
         span = xmax - xmin
         if span <= 0:
             return np.array([])
@@ -573,7 +593,8 @@ class PyriodGUI:
 
         return np.linspace(xmin, xmax, n)
 
-    def _init_peridogram_figures(self):
+    def _init_periodogram_figures(self):
+        """Create the interactive periodogram figure and plot artists."""
         self.perfig, self.perax = plt.subplots(
             figsize=(7, 3), num='Periodogram ({:d})'.format(self.pw.id))
 
@@ -638,7 +659,7 @@ class PyriodGUI:
 
     # Set up all the efficient viewport stuff here for periodogram plot
     def _init_viewport_periodogram_plot(self):
-        """Initialize responsive, decimated periodogram plotting."""
+        """Initialize viewport-dependent, decimated periodogram plotting."""
 
         # Maximum number of points stored in each displayed periodogram artist.
         # Because min/max decimation emits up to two points per bin, this is an
@@ -663,13 +684,13 @@ class PyriodGUI:
 
 
     def _request_periodogram_plot_update(self, ax=None):
-        """Request a debounced periodogram redraw."""
+        """Request a debounced redraw of the visible periodogram range."""
         self._periodogram_update_timer.stop()
         self._periodogram_update_timer.start()
 
 
     def _update_per_plots(self):
-        """Update periodogram plot data after periodograms are recomputed."""
+        """Refresh periodogram plot data after periodograms are recalculated."""
         self._last_periodogram_xlim = None
         self._request_periodogram_plot_update()
         # Update significance threshold
@@ -683,7 +704,7 @@ class PyriodGUI:
             self.perfig.canvas.draw_idle()
 
     def _refresh_periodogram_lines_from_view(self):
-        """Display only a decimated version of the visible frequency range."""
+        """Update periodogram lines using decimated data from the visible range."""
         x0, x1 = self.perax.get_xlim()
         xmin, xmax = sorted((x0, x1))
 
@@ -717,8 +738,17 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
    
     def _set_decimated_periodogram_line(self, line, power, xmin, xmax):
-        """Set one periodogram line using only visible, decimated data."""
+        """Set a periodogram line from decimated data in the visible range.
 
+        Parameters
+        ----------
+        line : matplotlib.lines.Line2D
+            Plot artist to update.
+        power : array-like
+            Periodogram amplitudes corresponding to ``pw.freqs``.
+        xmin, xmax : float
+            Visible frequency limits.
+        """
         xplot, yplot = decimate_visible_range(
             self.pw.freqs,
             power,
@@ -730,14 +760,14 @@ class PyriodGUI:
         line.set_data(xplot, yplot)
 
     def _update_refit_button(self):
-        """Indicate whether the staged model needs to be fitted."""
+        """Update the fit button style to indicate whether the model is current."""
         if self.pw.uptodate:
             self._refit.button_style = ''
         else:
             self._refit.button_style = 'warning'
 
     def _refresh_from_prewhitener(self):
-        """Refresh GUI displays from the current Prewhitener state."""
+        """Refresh GUI displays from the current `Prewhitener` state."""
         self._update_freq_dropdown()
 
         self._update_lc_display()
@@ -899,41 +929,50 @@ class PyriodGUI:
 
     # Functions for saving plots
     def save_tsfig(self, filename='Pyriod_TimeSeries.png', **kwargs):
-        """Save time series plot to file.
+        """Save the current time-series figure.
 
         Parameters
         ----------
-        filename : str, optional
-            Filename for saving the plot. The default is
-            'Pyriod_TimeSeries.png'.
-        **kwargs : keyword arguments
-            Passed to matplotlib.pyplot.savefig function.
+        filename : str or path-like, optional
+            Output filename. Default is ``"Pyriod_TimeSeries.png"``.
+        **kwargs
+            Additional keyword arguments passed to
+            ``matplotlib.figure.Figure.savefig``.
         """
         self.lcfig.savefig(filename, **kwargs)
 
     # Plot widget-related functions
     def _save_tsfig_button_click(self, *args):
+        """Save the time-series figure to the path selected in the GUI."""
         self.save_tsfig(self._tsfig_file_location.selected)
     
     def save_perfig(self, filename='Pyriod_Periodogram.png', **kwargs):
-        """Save periodogram plot to file.
+        """Save the current periodogram figure.
 
         Parameters
         ----------
-        filename : str, optional
-            Filename for saving the plot. The default is
-            'Pyriod_Periodogram.png'.
-        **kwargs : keyword arguments
-            Passed to matplotlib.pyplot.savefig function.
+        filename : str or path-like, optional
+            Output filename. Default is ``"Pyriod_Periodogram.png"``.
+        **kwargs
+            Additional keyword arguments passed to
+            ``matplotlib.figure.Figure.savefig``.
         """
         self.perfig.savefig(filename, **kwargs)
 
     def _save_perfig_button_click(self, *args):
+        """Save the periodogram figure to the path selected in the GUI."""
         self.save_perfig(self._perfig_file_location.selected)
 
-    # Update status message while calculations are occurring
-    # Also disable buttons while the fit is being performed
     def _update_status(self, calculating=True):
+        """Update the calculation-status display and fitting controls.
+
+        Parameters
+        ----------
+        calculating : bool, optional
+            If True, show the calculation indicator and disable fitting
+            controls. If False, clear the indicator and re-enable the
+            controls. Default is True.
+        """
         if calculating:
             self._status.value = (
                 "<center><b><big><font color='red'>"
@@ -950,15 +989,16 @@ class PyriodGUI:
     
     # Functions to update displays
     def _update_lc_display(self, *args):
-        """Change type of time series to display from dropdown."""
+        """Update the displayed time series for the selected data type."""
         self._display_lc(residuals=(self._tstype.value == "Residuals"))
 
     def _update_and_rescale_lc_display(self, *args):
-        """Change type of time series to display from dropdown."""
+        """Update the displayed time series and rescale its axes."""
         self.log(str(*args))
         self._display_lc(residuals=(self._tstype.value == "Residuals"),rescale=True)
 
     def _update_signal_markers(self):
+        """Update periodogram markers for currently staged signals."""
         freqs = self.pw.stagedvalues['freq'][self.pw.stagedvalues.include].values
         amps = (self.pw.stagedvalues['amp'].values[self.pw.stagedvalues.include]
                 * self.pw.amp_conversion)
@@ -975,6 +1015,17 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
 
     def _display_lc(self, residuals=False, rescale = False):
+        """Update the displayed light-curve data.
+
+        Parameters
+        ----------
+        residuals : bool, optional
+            If True, display residuals instead of the original flux.
+            Default is False.
+        rescale : bool, optional
+            If True, rescale the plot limits to the displayed data.
+            Default is False.
+        """
         ydata = np.copy(self.pw.lc.flux.value)
         if residuals:
             good = np.where(self.pw.lc["include"])
@@ -1011,12 +1062,12 @@ class PyriodGUI:
 
         # Light curve folding stuff
     def _fold_freq_selected(self, value):
-        # New frequency value selected to fold on
+        """Update the folding frequency from the fitted-signal selector."""
         if value['new'] is not None:
             self._fold_on.value = value['new']
 
     def _update_freq_dropdown(self):
-        # Add new frequencies to dropdown options
+        """Update the phase-folding frequency choices from fitted signals."""
         labels = [self.pw.fitvalues.index[i]
                   + ': {:.8f} '.format(self.pw.fitvalues.freq.iloc[i])
                   + self.pw.freq_unit.to_string()
@@ -1036,6 +1087,7 @@ class PyriodGUI:
 
     ## Functions for interacting with Prewhitener
     def _mask_selected_pts(self, event):
+        """Mask lasso-selected observations after a delete-key event."""
         if ((event.key in ["backspace", "delete"]) and (len(self._selector.ind) > 0)):
             self.pw.mask_indices(self._selector.ind)
             self._selector.ind = []
@@ -1048,6 +1100,7 @@ class PyriodGUI:
             self.update_log()
 
     def _clear_mask(self, _):
+        """Restore all masked observations and refresh affected displays."""
         self.pw.clear_mask()
         self._selector.ind = []
         self._lcplot_data.set_facecolors([self._lc_colors[m]
@@ -1060,7 +1113,7 @@ class PyriodGUI:
 
     # Periodogram related functions
     def _update_marker(self, x, y):
-        # Move the signal marker to the currently selected periodogram peak.
+        """Move the candidate-signal marker and update its frequency and amplitude."""
         x = _as_scalar_float(x)
         y = _as_scalar_float(y)
         self._thisfreq.value = f"{x:.12g}"
@@ -1070,28 +1123,33 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
 
     def _mark_highest_peak(self):
-        # Move signal marker to current highest peak.
+        """Move the candidate-signal marker to the highest residual peak."""
         self._update_marker(
             self.pw.freqs[np.nanargmax(self.pw.per_resid)],
             np.nanmax(self.pw.per_resid))
 
     def _onclick(self, event):
+        """Handle a completed click in the periodogram."""
         self._onperiodogramclick(event)
 
     def _onpress(self, event):
+        """Record the start of a mouse interaction in the periodogram."""
         self._press = True
 
     def _onmove(self, event):
+        """Record mouse movement during a periodogram interaction."""
         if self._press:
             self._move = True
 
     def _onrelease(self, event):
+        """Treat a press-and-release without movement as a periodogram click."""
         if self._press and not self._move:
             self._onclick(event)
         self._press = False
         self._move = False
 
     def _display_per_orig(self, *args):
+        """Show or hide the original-light-curve periodogram."""
         if self._show_per_orig.value:
             self._perplot_orig.set_alpha(1)
         else:
@@ -1099,6 +1157,7 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
 
     def _display_per_resid(self, *args):
+        """Show or hide the residual periodogram."""
         if self._show_per_resid.value:
             self._perplot_resid.set_alpha(1)
         else:
@@ -1106,6 +1165,7 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
 
     def _display_per_model(self, *args):
+        """Show or hide the fitted-model periodogram."""
         if self._show_per_model.value:
             self._perplot_model.set_alpha(1)
         else:
@@ -1113,6 +1173,7 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
 
     def _display_sig_threshold(self, *args):
+        """Show or hide the significance-threshold curve."""
         if self._show_sig_threshold.value:
             self._sig_threshold_plot.set_alpha(1)
         else:
@@ -1120,6 +1181,7 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
 
     def _display_per_markers(self, *args):
+        """Show or hide markers for staged signals."""
         if self._show_per_markers.value:
             self._signal_markers.set_alpha(1)
             self._combo_markers.set_alpha(1)
@@ -1129,8 +1191,17 @@ class PyriodGUI:
         self.perfig.canvas.draw_idle()
 
     def _onperiodogramclick(self, event):
-        """Handle clicks in the periodogram plot."""
+        """Select a candidate frequency from a periodogram click.
 
+        If peak snapping is enabled, select the highest residual-periodogram
+        peak near the clicked frequency. Otherwise, use the clicked frequency
+        directly and interpolate its residual amplitude.
+
+        Parameters
+        ----------
+        event : matplotlib.backend_bases.MouseEvent
+            Mouse event generated by the periodogram canvas.
+        """
         if event.xdata is None:
             return
 
@@ -1170,7 +1241,12 @@ class PyriodGUI:
 
     ## Fitting things
     def _add_staged_signal(self, *args):
-        """Add signal to set of signals to fit."""
+        """Stage the frequency currently entered in the GUI.
+
+        A numeric value is staged as an independent signal. A valid
+        combination expression is staged as a combination-frequency signal.
+        Invalid input is reported to the Pyriod log.
+        """
         # Is this a valid numeric frequency?
         if self._thisfreq.value.replace('.', '', 1).isdigit():
             self.pw.add_signal(float(self._thisfreq.value), self._thisamp.value)
@@ -1183,7 +1259,13 @@ class PyriodGUI:
         self.update_log()
 
     def fit_model(self, *args):
-        """Fit model and update plots
+        """Fit the staged signal model and refresh the GUI.
+
+        Calls ``pw.fit_model()`` and then refreshes the displayed light curve,
+        periodograms, signal markers, staged signal table, fit report, and log.
+
+        The GUI displays a calculation-status indicator and temporarily disables
+        the signal-addition and fitting buttons while the fit is running.
         """
         # Indicate that a calculation is running
         self._update_status(True)
@@ -1195,7 +1277,7 @@ class PyriodGUI:
             self._update_status(False)  # Calculation done
 
     def _sig_thresh_from_gui(self, *args):
-        # Compute significance threshold from GUI widget values
+        """Calculate a significance threshold from the current GUI settings."""
         fill_value = np.nan
         if self._sig_extrapolate_widget.value:
             fill_value = 'extrapolate'
@@ -1216,22 +1298,29 @@ class PyriodGUI:
 
     
     def _sig_thresh_change_auto(self, *args):
+        """Update automatic significance-threshold recalculation from the GUI."""
         self.pw.autorecalculate = self._sig_auto_recalculate.value
 
     def _update_fit_report(self):
+        """Update the displayed report for the most recent model fit."""
         if self.pw.fit_result is None:
             self._fit_result_html.value = "No fit to report."
         else:
             self._fit_result_html.value = self.pw.fit_result._repr_html_()
 
     def _update_signals_qgrid(self):
-         # Update qgrid displayed values
+        """Refresh the QGrid from the currently staged signal parameters."""
         self._signals_qgrid.df = self.pw.staged_table(display_units=True)
         self._update_refit_button()
         self._update_signal_markers()
 
     def _qgrid_changed_manually(self, *args):
-        """Pass along manual changes to Signals table to."""
+        """Propagate manual QGrid edits to the staged signal table.
+
+        Changes are recorded in the Pyriod log, converted from display
+        amplitude units to internal units, and stored in
+        ``pw.stagedvalues``. Dependent GUI displays are then refreshed.
+        """
         # Note: args has information about what changed if needed
         newdf = self._signals_qgrid.get_changed_df()
         olddf = self._signals_qgrid.df
@@ -1261,6 +1350,14 @@ class PyriodGUI:
         self.update_log()
 
     def _convert_qgrid_to_stagedvalues(self):
+        """Convert the displayed QGrid table to internal staged values.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Signal table converted to the dtypes and internal amplitude
+            units expected by `Prewhitener`.
+        """
         tempdf = (self._signals_qgrid.get_changed_df().copy()
                   .astype(dtype=dict(zip(self.pw.columns, self.pw.dtypes))))
         tempdf["amp"] /= self.pw.amp_conversion
@@ -1268,7 +1365,7 @@ class PyriodGUI:
         return tempdf
 
     def _delete_selected(self, *args):
-        """Delete signals corresponding to Qgrid rows."""
+        """Remove signals corresponding to the selected QGrid rows."""
         indices = self._signals_qgrid.get_selected_df().index
         existing = [idx for idx in indices if idx in self.pw.stagedvalues.index]
         if not existing:
@@ -1281,55 +1378,99 @@ class PyriodGUI:
         self.update_log()
 
     def _save_button_click(self, *args):
+        """Save the current fitted signal solution to the selected file."""
         self.pw.save_solution(filename=self._signals_file_location.selected)
         self.update_log()
     
     def _load_button_click(self, *args):
+        """Load a signal solution from the selected file and refresh the table."""
         self.pw.load_solution(filename=self._signals_file_location.selected)
         self._update_signals_qgrid()
         self.update_log()
 
     ## Log functions
     def update_log(self):
+        """Refresh the displayed log from ``pw.log_html``."""
         self._log.value = self.pw.log_html
     
     def log(self, message, level='info'):
-        # Write messsage to log and update log widget
+        """Record a message in the Pyriod log and refresh the log display.
+
+        Parameters
+        ----------
+        message : str
+            Message to record.
+        level : {"debug", "info", "warning", "error", "critical"}, optional
+            Logging level passed to ``pw.log``. Default is ``"info"``.
+        """
         self.pw.log(message, level=level)
         self.update_log()
 
     def _save_log_button_click(self, *args):
+        """Save the Pyriod log using the filename and overwrite setting in the GUI."""
         self.pw.save_log(self._log_file_location.selected, self._overwrite.value)
         self.update_log()
 
     ## Properties for convenient access
     @property
     def lc(self):
+        """Light curve associated with the underlying `Prewhitener`. 
+        
+        Returns 
+        ------- 
+        lightkurve.LightCurve 
+            ``pw.lc``. 
+        """
         return self.pw.lc
 
     @property
     def fitvalues(self):
+        """Parameters of the most recently fitted signal model.
+
+        Returns
+        -------
+        pandas.DataFrame
+            ``pw.fitvalues``.
+        """
         return self.pw.fitvalues
 
     @property
     def stagedvalues(self):
+        """Signal parameters staged for the next model fit.
+
+        Returns
+        -------
+        pandas.DataFrame
+            ``pw.stagedvalues``.
+        """
         return self.pw.stagedvalues
     
     def close(self, close_prewhitener=False, clear_prewhitener=False, collect=False):
-        """Close GUI/display resources owned by this PyriodGUI instance.
+        """Close resources owned by this GUI.
+
+        Matplotlib callbacks and timers are disconnected, widget callbacks are
+        removed, plot artists and figures are closed, and references held by the
+        GUI are released.
 
         Parameters
         ----------
         close_prewhitener : bool, optional
-            If True, also call ``self.pw.close()`` after closing the GUI.
-            The default is False because the Prewhitener may still be useful
-            after the GUI is closed.
+            If True, also close the associated ``Prewhitener`` after closing
+            the GUI. Default is False.
         clear_prewhitener : bool, optional
-            Passed to ``self.pw.close(clear_data=...)`` if close_prewhitener
-            is True. If True, releases the large science data arrays too.
+            Value passed as ``clear_data`` to ``pw.close`` when
+            ``close_prewhitener=True``. If True, the `Prewhitener` also releases
+            its large analysis data objects. Default is False.
         collect : bool, optional
-            If True, run garbage collection at the end. Usually not necessary,
-            but useful in notebooks after creating many GUI instances.
+            If True, explicitly run Python garbage collection after resources
+            are released. Usually unnecessary, but potentially useful after
+            creating many GUI instances in a long-running notebook. Default is
+            False.
+
+        Notes
+        -----
+        Closing the GUI does not close the associated `Prewhitener` unless
+        ``close_prewhitener=True``.
         """
         if getattr(self, "_closed", False):
             return
