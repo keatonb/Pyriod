@@ -20,20 +20,50 @@ from .utils import _as_scalar_float
 plt.ioff()  # Turn off interactive mode
 
 class PyriodGUI:
-    """Interactive graphical interface for a `Prewhitener`.
+    """Interactive Jupyter interface for a `Prewhitener`.
+
+    `PyriodGUI` provides interactive time-series and periodogram plots,
+    signal-table editing, fitting controls, significance-threshold controls,
+    and access to the Pyriod log. Numerical analysis and fitted state are
+    stored in the associated `Prewhitener`.
 
     Parameters
     ----------
     prewhitener : Prewhitener
-        The analysis object whose state is displayed and manipulated
-        by the GUI.
+        Prewhitener analysis object to display and manipulate.
+
+    Attributes
+    ----------
+    pw : Prewhitener
+        The underlying analysis object used by the GUI.
+    lcfig : matplotlib.figure.Figure
+        Figure containing the interactive time series plot.
+    lcax : matplotlib.axes.Axes
+        Axes containing the interactive time series plot.
+    perfig : matplotlib.figure.Figure
+        Figure containing the interactive periodogram plot.
+    perax : matplotlib.axes.Axes
+        Axes containing the interactive periodogram plot.
+    lc : lightkurve.LightCurve
+        Convenience access to ``pw.lc``.
+    fitvalues : pandas.DataFrame
+        Convenience access to ``pw.fitvalues``.
+    stagedvalues : pandas.DataFrame
+        Convenience access to ``pw.stagedvalues``.
 
     Notes
     -----
-    The GUI and the supplied `Prewhitener` refer to the same underlying
-    analysis state. Changes made through the GUI therefore modify the
-    supplied `Prewhitener` object. Changes made directly to the `Prewhitener`
-    may not be reflected in the GUI.
+    The GUI and ``prewhitener`` share the same underlying analysis state.
+    Changes made through the GUI therefore modify the supplied
+    `Prewhitener`.
+
+    Changes made directly to the `Prewhitener` are not guaranteed to appear
+    in the GUI until the relevant GUI displays are refreshed. When doing an
+    interactive analysis with the GUI, the GUI generally assumes all 
+    analysis steps are performed with the GUI interface.
+
+    The interactive Matplotlib figures require an ipympl backend, normally
+    enabled in a Jupyter notebook with ``%matplotlib widget``.
     """
     def __init__(self, prewhitener):
         self.pw = prewhitener
@@ -724,12 +754,22 @@ class PyriodGUI:
 
     ## Main Widget collections
     def TimeSeries(self):
-        """Display the interactive Time Series cell in a Jupyter notebook.
-
-        Returns
-        -------
-        widget
-            Time series plot, options, and information to be displayed.
+        """Return the interactive time-series interface. 
+        
+        The interface contains the time-series plot, controls for displaying the 
+        original or residual light curve, phase-folding controls, masking 
+        controls, and figure-saving controls. 
+        
+        Returns 
+        ------- 
+        ipywidgets.Widget 
+            Widget containing the interactive time-series interface. 
+            
+        Raises 
+        ------ 
+        traitlets.TraitError 
+            If the Matplotlib canvas cannot be embedded as an ipywidget, for 
+            example when the ipympl backend is not active. 
         """
         try:
             options = widgets.Accordion(children=[
@@ -743,12 +783,22 @@ class PyriodGUI:
             raise
 
     def Periodogram(self):
-        """Display the interactive Periodogram cell in a Jupyter notebook.
-
-        Returns
-        -------
-        widget
-            Periodogram plot, options, and information to be displayed.
+        """Return the interactive periodogram interface. 
+        
+        The interface contains the periodogram plot, controls for selecting and 
+        staging signals, fitting the current staged solution, choosing displayed 
+        periodograms and signal markers, calculating significance thresholds, 
+        and saving the figure. 
+        
+        Returns 
+        ------- 
+        ipywidgets.Widget 
+            Widget containing the interactive periodogram interface. 
+        
+        Raises 
+        ------ 
+        traitlets.TraitError 
+            If the Matplotlib canvas cannot be embedded as an ipywidget, for example when the ipympl backend is not active. 
         """
         try:
             # display config on left, sig threshold at right
@@ -786,12 +836,16 @@ class PyriodGUI:
             raise
 
     def Signals(self):
-        """Display the interactive Signals cell in a Jupyter notebook.
-
-        Returns
-        -------
-        widget
-            Signals table, fit report, and other information to be displayed.
+        """Return the interactive signal-table interface. 
+        
+        The interface displays the signal parameters staged for the next fit and 
+        provides controls for adding, editing, removing, saving, and loading 
+        signals. It also provides access to the most recent fit report. 
+        
+        Returns 
+        ------- 
+        ipywidgets.Widget 
+            Widget containing the staged signal table and associated controls. 
         """
         fitreport = widgets.Accordion(
             children=[self._fit_result_html],
@@ -806,12 +860,12 @@ class PyriodGUI:
                         fitreport])
 
     def Log(self):
-        """Display the Pyriod Log cell in a Jupyter notebook.
-
-        Returns
-        -------
-        widget
-            Log of actions taken.
+        """Return the Pyriod log interface. 
+        
+        Returns 
+        ------- 
+        ipywidgets.Widget 
+            Widget displaying the current Pyriod log together with controls for saving it to a file. 
         """
                 # Layout Log widgets
         savelog = HBox([self._save_log,
@@ -822,15 +876,15 @@ class PyriodGUI:
              savelog])
 
     def Pyriod(self):
-        """Display the interactive Pyriod suite in a Jupyter notebook.
-
-        Includes the Time Series, Periodogram, Signals, and Log widgets in
-        separate tabs.
-
-        Returns
-        -------
-        widget
-            Time Series, Periodogram, Signals, and Log widgets in tabs.
+        """Return the complete interactive Pyriod interface. 
+        
+        The time series, periodogram, signal table, and log interfaces are 
+        combined into separate tabs. 
+        
+        Returns 
+        ------- 
+        ipywidgets.Widget 
+            Tabbed widget containing the complete Pyriod interface. 
         """
         tstab = self.TimeSeries()
         pertab = self.Periodogram()
