@@ -19,6 +19,7 @@ from .utils import _as_scalar_float
 
 plt.ioff()  # Turn off interactive mode
 
+
 class PyriodGUI:
     """Interactive Jupyter interface for a `Prewhitener`.
 
@@ -30,16 +31,16 @@ class PyriodGUI:
     Parameters
     ----------
     prewhitener : Prewhitener
-        Prewhitener analysis object to display and manipulate.
+        Analysis object to display and manipulate.
 
     Attributes
     ----------
     pw : Prewhitener
-        The underlying analysis object used by the GUI.
+        Underlying analysis object used by the GUI.
     lcfig : matplotlib.figure.Figure
-        Figure containing the interactive time series plot.
+        Figure containing the interactive time-series plot.
     lcax : matplotlib.axes.Axes
-        Axes containing the interactive time series plot.
+        Axes containing the interactive time-series plot.
     perfig : matplotlib.figure.Figure
         Figure containing the interactive periodogram plot.
     perax : matplotlib.axes.Axes
@@ -53,16 +54,17 @@ class PyriodGUI:
 
     Notes
     -----
-    The GUI and ``prewhitener`` share the same underlying analysis state.
-    Changes made through the GUI therefore modify the supplied
+    The GUI operates directly on the supplied `Prewhitener`; it does not
+    maintain a separate copy of the analysis state. Changes made through
+    the GUI therefore modify ``pw``.
+
+    The GUI assumes that analysis operations are normally performed through
+    the interface. If ``pw`` is modified directly, call
+    ``refresh_from_prewhitener()`` to synchronize the displayed plots,
+    signal table, fit report, log, and other GUI state with the current
     `Prewhitener`.
 
-    Changes made directly to the `Prewhitener` are not guaranteed to appear
-    in the GUI until the relevant GUI displays are refreshed. When doing an
-    interactive analysis with the GUI, the GUI generally assumes all 
-    analysis steps are performed with the GUI interface.
-
-    The interactive Matplotlib figures require an ipympl backend, normally
+    The interactive Matplotlib figures require the ipympl backend, normally
     enabled in a Jupyter notebook with ``%matplotlib widget``.
     """
     def __init__(self, prewhitener):
@@ -79,7 +81,7 @@ class PyriodGUI:
         self._init_signals_qgrid()
         self._init_signals_widgets()
         self._init_log_widgets()
-        self._refresh_from_prewhitener()
+        self.refresh_from_prewhitener()
 
     ## Initialize Widgets
     def _init_timeseries_widgets(self):
@@ -766,7 +768,7 @@ class PyriodGUI:
         else:
             self._refit.button_style = 'warning'
 
-    def _refresh_from_prewhitener(self):
+    def refresh_from_prewhitener(self):
         """Refresh GUI displays from the current `Prewhitener` state."""
         self._update_freq_dropdown()
 
@@ -774,6 +776,67 @@ class PyriodGUI:
         self._refresh_model_line_from_view()
 
         self._refresh_periodogram_lines_from_view()
+        self._update_signal_markers()
+        self._display_per_markers()
+        self._mark_highest_peak()
+
+        self._update_signals_qgrid()
+        self._update_fit_report()
+        self.update_log()
+
+    def refresh_from_prewhitener(self, reset_limits=False):
+        """Refresh GUI displays from the current Prewhitener state.
+
+        Updates the light curve, periodograms, signal markers, staged signal
+        table, fit report, log, masked-point colors, and significance threshold.
+
+        Parameters
+        ----------
+        reset_limits : bool, optional
+            Whether to reset the time-series and periodogram plot limits to match
+            the current data and frequency sampling. The default is False.
+
+        Notes
+        -----
+        Call this after modifying ``self.pw`` directly to synchronize the GUI
+        with the underlying `Prewhitener`.
+        """
+        self._update_freq_dropdown()
+
+        # Update light curve display
+        self._lcplot_data.set_facecolors(
+            [self._lc_colors[m] for m in self.pw.lc["include"]]
+        )
+        self._lcplot_data.set_edgecolors("None")
+        self._display_lc(
+                            residuals=(self._tstype.value == "Residuals"),
+                            rescale=reset_limits
+                        )
+        self._refresh_model_line_from_view()
+
+        # Update periodogram display
+        self.perax.set_ylabel(f"amplitude ({self.pw.amp_unit})")
+        self.perax.set_xlabel(f"frequency ({self.pw._freq_label})")
+        if reset_limits:
+            self.perax.set_xlim(np.min(self.pw.freqs), np.max(self.pw.freqs))
+            ymax = np.nanmax([self.pw.per_orig,
+                            self.pw.per_model,
+                            self.pw.per_resid])
+            self.perax.set_ylim(0, 1.05*ymax)
+
+        self._last_periodogram_xlim = None
+        self._refresh_periodogram_lines_from_view()
+
+        # Update significance threshold
+        if ((self.pw.noise_spectrum is not None) &
+            (self.pw.significance_multiplier is not None) &
+            (self.pw.significance_settings is not None)):
+            self._sig_threshold_plot.set_data(
+                self.pw._sig_threshold_freqs,
+                self.pw._sig_threshold_power)
+        else:
+            self._sig_threshold_plot.set_data([], [])
+
         self._update_signal_markers()
         self._display_per_markers()
         self._mark_highest_peak()
@@ -1271,7 +1334,7 @@ class PyriodGUI:
         self._update_status(True)
         try:
             self.pw.fit_model()
-            self._refresh_from_prewhitener()
+            self.refresh_from_prewhitener()
             self._update_per_plots()
         finally:
             self._update_status(False)  # Calculation done
