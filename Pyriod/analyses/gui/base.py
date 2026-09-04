@@ -86,6 +86,123 @@ class AnalysisGUI(ABC):
         self._cleanup_callbacks: list[Callable[[], None]] = []
         self._figures: list[Figure] = []
 
+        self._init_progress_widgets()
+
+
+    def _init_progress_widgets(self) -> None:
+        """Create the shared status, progress, and cancel widgets."""
+        self._status = widgets.HTML(value="")
+
+        self._progress = widgets.IntProgress(
+            value=0,
+            min=0,
+            max=100,
+            description="Progress:",
+            bar_style="",
+            orientation="horizontal",
+            layout=widgets.Layout(width="500px"),
+            style={"description_width": "initial"},
+        )
+
+        self._cancel = widgets.Button(
+            description="Cancel",
+            disabled=True,
+            button_style="danger",
+            tooltip="Stop after the current analysis step.",
+            icon="stop",
+        )
+
+        self._on_click(self._cancel, self._cancel_clicked)
+
+    @property
+    def progress_widget(self) -> widgets.Widget:
+        """Combined progress-bar and cancel-button widget."""
+        return widgets.HBox(
+            [self._progress, self._cancel],
+            layout=widgets.Layout(align_items="center"),
+        )
+
+    def _set_status(self, message: str = "", *, level: str | None = None) -> None:
+        """Update the shared analysis status message."""
+        if not message:
+            self._status.value = ""
+            return
+
+        colors = {
+            "info": "red",
+            "warning": "darkorange",
+            "error": "red",
+        }
+        color = colors.get(level)
+
+        if color is None:
+            self._status.value = f"<center><b>{message}</b></center>"
+        else:
+            self._status.value = (
+                f"<center><b><font color='{color}'>{message}</font></b></center>"
+            )
+
+    def _set_progress(self, completed: int, total: int) -> None:
+        """Update the shared graphical progress bar."""
+        if self.closed:
+            return
+
+        total = max(int(total), 1)
+        self._progress.max = total
+        self._progress.value = min(int(completed), total)
+        self._progress.description = f"{completed}/{total}:"
+
+    def _start_progress(
+        self,
+        total: int,
+        *,
+        message: str = "CALCULATING...",
+    ) -> None:
+        """Initialize the shared progress display for a new calculation."""
+        self._clear_cancel()
+        total = max(int(total), 1)
+        self._progress.min = 0
+        self._progress.max = total
+        self._progress.value = 0
+        self._progress.description = f"0/{total}:"
+        self._progress.bar_style = "info"
+        self._cancel.disabled = False
+        self._set_busy(True)
+        self._set_status(message, level="info")
+
+    def _finish_progress(self) -> None:
+        """Mark the current calculation as successfully completed."""
+        self._progress.bar_style = "success"
+        self._cancel.disabled = True
+        self._set_busy(False)
+        self._set_status("")
+
+    def _abort_progress(self, message: str = "") -> None:
+        """Mark the current calculation as cancelled or stopped early."""
+        self._progress.bar_style = "warning"
+        self._cancel.disabled = True
+        self._set_busy(False)
+        self._set_status(message, level="warning" if message else None)
+
+    def _fail_progress(self, message: str = "") -> None:
+        """Mark the current calculation as failed."""
+        self._progress.bar_style = "danger"
+        self._cancel.disabled = True
+        self._set_busy(False)
+        self._set_status(message, level="error" if message else None)
+
+    def _cancel_clicked(self, _) -> None:
+        """Request cooperative cancellation of the active analysis."""
+        if not self.busy:
+            return
+
+        self._request_cancel()
+        self._cancel.disabled = True
+        self._set_status(
+            "CANCELLING AFTER CURRENT STEP...",
+            level="warning",
+        )
+    
     @property
     def widget(self) -> widgets.Widget:
         """Top-level widget displayed in the Pyriod tab.

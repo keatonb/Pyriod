@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
 from traitlets import TraitError
@@ -125,6 +127,8 @@ class SpectralWindowGUI(AnalysisGUI):
             interface = widgets.VBox(
                 [
                     close_row,
+                    self._status,
+                    self.progress_widget,
                     self.fig.canvas,
                     self._result,
                     accordion,
@@ -141,25 +145,128 @@ class SpectralWindowGUI(AnalysisGUI):
         self._set_widget(interface)
 
     def _calculate_clicked(self, _):
-        result = self._run_analysis(
-            spectral_window,
-            self.pw,
-            maxfreq=self._maxfreq.value,
-            oversample=self._oversample.value,
-            log=True,
-            context="Spectral-window calculation failed",
-        )
+        """Start a spectral-window calculation."""
+        if self.busy:
+            return
 
-        if result is None:
+        try:
+            self._start_task(self._calculate_window())
+        except Exception as exc:
+            self._log_exception(
+                exc,
+                context="Could not start spectral-window calculation",
+            )
+
+    async def _calculate_window(self):
+        """Calculate the spectral window without blocking the notebook GUI."""
+        maxfreq = self._maxfreq.value
+        oversample = self._oversample.value
+
+        # Estimate the number of frequency evaluations so the progress bar
+        # has a meaningful total before the worker thread starts.
+        included = np.asarray(self.pw.lc["include"], dtype=bool)
+        time = self.pw.lc.time.value[included]
+
+        if len(time) < 2:
             self._result.value = (
-                "<b>Spectral-window calculation failed. "
-                "See Log.</b>"
+                "<b>Spectral-window calculation failed. See Log.</b>"
+            )
+            self._log(
+                "Spectral-window calculation failed: "
+                "at least two included observations are required.",
+                level="error",
             )
             return
 
-        self.frequencies, self.amplitudes = result
+        fres = 1.0 / (
+            self.pw.freq_conversion * np.ptp(time)
+        )
+        step = fres / oversample
 
-        self._draw_window()
+        if oversample <= 0 or maxfreq <= 0 or not np.isfinite(step) or step <= 0:
+            self._result.value = (
+                "<b>Spectral-window calculation failed. See Log.</b>"
+            )
+            self._log(
+                "Spectral-window calculation failed: invalid frequency-grid options.",
+                level="error",
+            )
+            return
+
+        total = max(1, int(np.ceil(maxfreq / step)))
+
+        self._maxfreq.disabled = True
+        self._oversample.disabled = True
+        self._calculate.disabled = True
+
+        self._start_progress(
+            total,
+            message="Calculating spectral window...",
+        )
+
+        self._log(
+            "Calculating spectral window: "
+            f"maxfreq = {maxfreq} {self.pw.freq_unit}, "
+            f"oversample = {oversample}."
+        )
+
+        loop = asyncio.get_running_loop()
+
+        def progress_callback(completed, requested):
+            loop.call_soon_threadsafe(
+                self._set_progress,
+                completed,
+                requested,
+            )
+
+        result = await self._run_analysis_in_thread(
+            spectral_window,
+            self.pw,
+            maxfreq=maxfreq,
+            oversample=oversample,
+            log=False,
+            progress_callback=progress_callback,
+            cancel_check=self._cancel_check,
+            context="Spectral-window calculation failed",
+        )
+
+        if self.closed:
+            return
+
+        self._maxfreq.disabled = False
+        self._oversample.disabled = False
+        self._calculate.disabled = False
+
+        if result is None:
+            self._result.value = (
+                "<b>Spectral-window calculation failed. See Log.</b>"
+            )
+            self._fail_progress("Spectral window calculation failed.")
+            return
+
+        self.frequencies, self.amplitudes = result
+        completed = len(self.frequencies)
+
+        if self.cancel_requested:
+            self._abort_progress("Spectral window calculation cancelled.")
+            self._log(
+                "Spectral-window calculation cancelled "
+                f"after {completed}/{total} frequency evaluations.",
+                level="warning",
+            )
+        else:
+            self._finish_progress()
+            self._log(
+                "Spectral-window calculation completed "
+                f"({completed} frequency evaluations)."
+            )
+
+        if completed:
+            self._draw_window()
+        else:
+            self._result.value = (
+                "<b>No spectral-window frequencies were completed.</b>"
+            )
 
     def _draw_window(self):
         self.ax.clear()

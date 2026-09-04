@@ -105,29 +105,8 @@ class BootstrapSignificanceGUI(AnalysisGUI):
         # Status
         # --------------------------------------------------------------
 
-        self._status = widgets.HTML(value="")
-
         self._result = widgets.HTML(
             value="<b>No bootstrap samples calculated.</b>"
-        )
-
-        self._progress = widgets.IntProgress(
-            value=0,
-            min=0,
-            max=100,
-            description="Progress:",
-            bar_style="",
-            orientation="horizontal",
-            layout=widgets.Layout(width="500px"),
-            style={"description_width": "initial"},
-        )
-
-        self._cancel = widgets.Button(
-            description="Cancel",
-            disabled=True,
-            button_style="danger",
-            tooltip="Stop after the current bootstrap realization.",
-            icon="stop",
         )
 
         # --------------------------------------------------------------
@@ -223,11 +202,6 @@ class BootstrapSignificanceGUI(AnalysisGUI):
         )
 
         self._on_click(
-            self._cancel,
-            self._cancel_clicked,
-        )
-
-        self._on_click(
             self._update,
             self._update_clicked,
         )
@@ -235,7 +209,7 @@ class BootstrapSignificanceGUI(AnalysisGUI):
         self._on_click(
             self._close,
             self._close_clicked,
-        )
+        ) 
 
     def _init_layout(self):
         """Construct the top-level analysis widget."""
@@ -286,15 +260,7 @@ class BootstrapSignificanceGUI(AnalysisGUI):
         )
         accordion.set_title(0, "options")
 
-        progress_row = widgets.HBox(
-            [
-                self._progress,
-                self._cancel,
-            ],
-            layout=widgets.Layout(
-                align_items="center",
-            ),
-        )
+        progress_row = self.progress_widget
 
         close_row = widgets.HBox(
             [self._close],
@@ -416,8 +382,7 @@ class BootstrapSignificanceGUI(AnalysisGUI):
     # ------------------------------------------------------------------
 
     def _set_sampling_busy(self, busy):
-        """Enable or disable controls during bootstrap calculations."""
-
+        """Enable or disable bootstrap-specific controls during calculation."""
         self._nruns.disabled = busy
         self._minfreq.disabled = busy
         self._maxfreq.disabled = busy
@@ -430,35 +395,7 @@ class BootstrapSignificanceGUI(AnalysisGUI):
         self._relative.disabled = busy
         self._fap.disabled = busy
 
-        self._update.disabled = (
-            busy or self.maxima is None
-        )
-
-        self._cancel.disabled = not busy
-
-        self._set_busy(busy)
-
-        if busy:
-            self._status.value = (
-                "<center>"
-                "<b><big><font color='red'>"
-                "CALCULATING BOOTSTRAP SAMPLES..."
-                "</font></big></b>"
-                "</center>"
-            )
-        else:
-            self._status.value = ""
-
-    def _set_progress(self, completed, requested):
-        """Update the graphical progress bar."""
-        if self.closed:
-            return
-
-        self._progress.max = requested
-        self._progress.value = completed
-        self._progress.description = (
-            f"{completed}/{requested}:"
-        )
+        self._update.disabled = busy or self.maxima is None
 
     # ------------------------------------------------------------------
     # Bootstrap calculation
@@ -498,14 +435,11 @@ class BootstrapSignificanceGUI(AnalysisGUI):
         timelimit = options["timelimit"]
         seed = options["seed"]
 
-        self._clear_cancel()
         self._set_sampling_busy(True)
-
-        self._progress.min = 0
-        self._progress.max = nruns
-        self._progress.value = 0
-        self._progress.description = f"0/{nruns}:"
-        self._progress.bar_style = "info"
+        self._start_progress(
+            nruns,
+            message="Calculating bootstrap samples...",
+        )
 
         self._log(
             "Calculating bootstrap periodogram samples: "
@@ -547,10 +481,10 @@ class BootstrapSignificanceGUI(AnalysisGUI):
             return
 
         if result is None:
-            self._progress.bar_style = "danger"
             self._result.value = (
                 "<b>Bootstrap calculation failed. See Log.</b>"
             )
+            self._fail_progress("Bootstrap calculation failed.")
             self._set_sampling_busy(False)
             return
 
@@ -562,31 +496,28 @@ class BootstrapSignificanceGUI(AnalysisGUI):
         completed = len(maxima)
 
         if self.cancel_requested:
-            self._progress.bar_style = "warning"
-
             self._log(
                 "Bootstrap significance calculation cancelled "
                 f"after {completed}/{nruns} realizations.",
                 level="warning",
             )
+            self._abort_progress("Bootstrap calculation cancelled.")
 
         elif completed < nruns:
-            self._progress.bar_style = "warning"
-
             self._log(
                 "Bootstrap significance calculation stopped "
                 f"after {completed}/{nruns} realizations "
                 "because of the time-limit criterion.",
                 level="warning",
             )
+            self._abort_progress("Bootstrap calculation stopped early.")
 
         else:
-            self._progress.bar_style = "success"
-
             self._log(
                 "Bootstrap periodogram sampling completed "
                 f"({completed} realizations)."
             )
+            self._finish_progress()
 
         self._set_sampling_busy(False)
 
@@ -596,22 +527,6 @@ class BootstrapSignificanceGUI(AnalysisGUI):
             self._result.value = (
                 "<b>No bootstrap samples were completed.</b>"
             )
-
-    def _cancel_clicked(self, _):
-        """Request cancellation after the current realization."""
-        if not self.busy:
-            return
-
-        self._request_cancel()
-        self._cancel.disabled = True
-
-        self._status.value = (
-            "<center>"
-            "<b><font color='darkorange'>"
-            "CANCELLING AFTER CURRENT REALIZATION..."
-            "</font></b>"
-            "</center>"
-        )
 
     # ------------------------------------------------------------------
     # Threshold calculation
