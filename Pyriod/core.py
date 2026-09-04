@@ -1378,53 +1378,6 @@ class Prewhitener(object):
         f.write(soup.get_text().replace('|', ''))
         f.close()
 
-    ### Advanced Features ###
-
-    def spectral_window(self, maxfreq=100, osample=10):
-        """Calculate the spectral window of the included observations.
-
-        The spectral window is evaluated with a direct discrete Fourier
-        transform rather than the Lomb-Scargle implementation used for the
-        Pyriod periodograms.
-
-        Parameters
-        ----------
-        maxfreq : float, optional
-            Maximum frequency to evaluate, in ``freq_unit``. Default is 100.
-        osample : float, optional
-            Oversampling factor relative to the natural frequency resolution.
-            Default is 10.
-
-        Returns
-        -------
-        freqvec : numpy.ndarray
-            Frequencies at which the spectral window was evaluated, in
-            ``freq_unit``.
-        ampvec : numpy.ndarray
-            Corresponding normalized spectral-window amplitudes.
-
-        Notes
-        -----
-        Only light curve observations whose ``include`` value is True are used.
-        """
-        # Compute spectral window with DFT
-        # Define the window function
-        good = np.where(self.lc["include"])
-        time = self.lc.time[good].value
-        window = np.ones(len(time))*0.5
-        freqvec = np.arange(0, maxfreq, self.fres/osample)
-        # DFT function (stolen from Mikemon)
-        ampvec = np.zeros(len(freqvec))
-        for i, freq in enumerate(freqvec):
-            omega = 2.*np.pi*freq*self.freq_conversion
-            wts = np.sin(omega*time)
-            wtc = np.cos(omega*time)
-            camp = np.dot(wtc, window)
-            samp = np.dot(wts, window)
-            ampvec[i] = np.sqrt(camp**2 + samp**2)
-        ampvec = (2./len(time))*np.array(ampvec)
-        return freqvec, ampvec
-
     def close(self, clear_data=True, collect=False):
         """Release resources owned by this Prewhitener.
 
