@@ -53,7 +53,7 @@ class SpectralWindowGUI(AnalysisGUI):
         self.ax.set_xlabel(
             f"Frequency ({self.pw.freq_unit})"
         )
-        self.ax.set_ylabel("Spectral window amplitude")
+        self.ax.set_ylabel("spectral window amplitude")
 
         plt.tight_layout()
 
