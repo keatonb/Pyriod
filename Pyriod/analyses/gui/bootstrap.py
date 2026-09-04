@@ -206,7 +206,7 @@ class BootstrapSignificanceGUI(AnalysisGUI):
 
         self._info = widgets.HTML(
             value=  ("Bootstrap resampling from <i> current </i> residuals time series. <br>" + 
-                     "A reliable threshold required decent sampling around the FAP level.")
+                     "A reliable threshold requires decent sampling around the FAP level.")
         )
 
         self._close = widgets.Button(
