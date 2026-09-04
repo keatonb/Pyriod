@@ -17,6 +17,8 @@ from .plotsupport import (
 )
 from .utils import _as_scalar_float
 
+from Pyriod.analyses.gui.base import AnalysisGUI
+
 plt.ioff()  # Turn off interactive mode
 
 
@@ -979,16 +981,37 @@ class PyriodGUI:
         ipywidgets.Widget 
             Tabbed widget containing the complete Pyriod interface. 
         """
-        tstab = self.TimeSeries()
-        pertab = self.Periodogram()
-        signalstab = self.Signals()
-        logtab = self.Log()
-        tabs = widgets.Tab(children=[tstab, pertab, signalstab, logtab])
-        tabs.set_title(0, 'Time Series')
-        tabs.set_title(1, 'Periodogram')
-        tabs.set_title(2, 'Signals')
-        tabs.set_title(3, 'Log')
-        return tabs
+        if hasattr(self, "_tabs"):
+            return self._tabs
+
+        self._base_tabs = [
+            ("Time Series", self.TimeSeries()),
+            ("Periodogram", self.Periodogram()),
+            ("Signals", self.Signals()),
+            ("Log", self.Log()),
+        ]
+        self._analyses = {}
+
+        self._tabs = widgets.Tab()
+        self._rebuild_tabs()
+
+        return self._tabs
+
+    def _rebuild_tabs(self):
+        "Include all analysis tabs in GUI interface."
+        entries = list(self._base_tabs)
+
+        for analysis in self._analyses.values():
+            entries.append(
+                (analysis.title, analysis.widget)
+            )
+
+        self._tabs.children = tuple(
+            widget for _, widget in entries
+        )
+
+        for i, (title, _) in enumerate(entries):
+            self._tabs.set_title(i, title)
 
     # Functions for saving plots
     def save_tsfig(self, filename='Pyriod_TimeSeries.png', **kwargs):
@@ -1507,7 +1530,78 @@ class PyriodGUI:
             ``pw.stagedvalues``.
         """
         return self.pw.stagedvalues
-    
+
+    ### Functions for extending the GUI to include additional analysis tabs.
+    def add_analysis(self, analysis_class, **kwargs):
+        """Add an optional analysis interface as a new tab."""
+
+        if (
+            not isinstance(analysis_class, type)
+            or not issubclass(analysis_class, AnalysisGUI)
+        ):
+            raise TypeError(
+                "analysis_class must be a subclass of AnalysisGUI."
+            )
+
+        if not hasattr(self, "_analyses"):
+            self._analyses = {}
+
+        name = analysis_class.__name__
+
+        if name in self._analyses:
+            raise ValueError(
+                f"{analysis_class.__name__} is already open."
+            )
+
+        analysis = analysis_class(
+            self.pw,
+            log_updated=self.update_log,
+            request_close=self.remove_analysis,
+            **kwargs,
+        )
+
+        self._analyses[name] = analysis
+
+        self._rebuild_tabs()
+
+        # Select the newly added tab.
+        self._tabs.selected_index = len(self._tabs.children) - 1
+
+        return analysis     
+
+    def remove_analysis(self, analysis):
+        """Close and remove an optional analysis tab."""
+
+        if isinstance(analysis, str):
+            name = analysis
+
+        elif isinstance(analysis, type):
+            if not issubclass(analysis, AnalysisGUI):
+                raise TypeError(
+                    "analysis must be an AnalysisGUI instance, subclass, "
+                    "or class-name string."
+                )
+            name = analysis.__name__
+
+        elif isinstance(analysis, AnalysisGUI):
+            name = type(analysis).__name__
+
+        else:
+            raise TypeError(
+                "analysis must be an AnalysisGUI instance, subclass, "
+                "or class-name string."
+            )
+
+        open_analysis = self._analyses.pop(name, None)
+
+        if open_analysis is None:
+            return False
+
+        open_analysis.close()
+        self._rebuild_tabs()
+
+        return True 
+
     def close(self, close_prewhitener=False, clear_prewhitener=False, collect=False):
         """Close resources owned by this GUI.
 
@@ -1550,6 +1644,17 @@ class PyriodGUI:
 
         def safe_attr(name):
             return getattr(self, name, None)
+
+        # Close optional analysis tabs
+        analyses = getattr(self, "_analyses", {})
+
+        for analysis in list(analyses.values()):
+            try:
+                analysis.close()
+            except Exception:
+                pass
+
+        analyses.clear()
 
         # ------------------------------------------------------------------
         # 1. Stop and detach Matplotlib timers
