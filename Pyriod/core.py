@@ -75,7 +75,8 @@ class Prewhitener(object):
     amp_unit : str, optional
         Amplitude unit used for input and displayed amplitudes. Accepted
         values include ``"relative"``, ``"percent"``, ``"ppt"``, ``"ppm"``,
-    and ``"mma"``. Default is ``"ppt"``.
+        and ``"mma"``. Default is ``"ppt"``.
+    freq_unit : str, optional
         Frequency unit. Accepted values include aliases for microhertz 
         (e.g., ``"muhz"``) and cycles per day (e.g., ``"1/d"``). Default is 
         ``"muHz"``.
@@ -827,7 +828,7 @@ class Prewhitener(object):
                     thisphase = (self.stagedvalues.phase[prefix]
                                  - (self.tshift * self.freq_conversion
                                     * self.stagedvalues.freq[prefix])) % 1
-                    if np.isnan(thisphase):  # If new signal to fit
+                    if np.isnan(thisphase) or self.stagedvalues.brute[prefix]:  # If new signal to fit
                         thisphase = self._brute_phase_est(
                             self.stagedvalues.freq[prefix],
                             self.stagedvalues.amp[prefix])
