@@ -1,31 +1,38 @@
 site_name: Pyriod
 
 nav:
-    - Home: index.md
-    - Walkthrough: walkthrough.md
-#   - Examples: examples.md
-    - API Reference:
-        - Pyriod: api/pyriod.md
-        - Prewhitener: api/prewhitener.md
-        - PyriodGUI: api/gui.md
+  - Home: index.md
+  - Walkthrough: walkthrough.md
 
-theme: 
-    name: readthedocs
+  - Advanced Analyses:
+      - Overview: analyses/index.md
+      - Analysis GUI Tabs: analyses/gui_tabs.md
+      - Bootstrap Significance: analyses/bootstrap.md
+      - Spectral Window: analyses/spectral_window.md
+
+  - API Reference:
+      - Prewhitener: api/prewhitener.md
+      - PyriodGUI: api/gui.md
+      - Advanced Analyses:
+          - Bootstrap: api/analyses/bootstrap.md
+          - Spectral Window: api/analyses/spectral_window.md
+          - AnalysisGUI: api/analyses/gui.md
+
+  - Developer Guide:
+      - Extending Analyses: developer/analyses.md
+
+theme:
+  name: readthedocs
 
 plugins:
   - search
   - mkdocstrings:
       handlers:
         python:
-          paths: ["."]
           options:
             docstring_style: numpy
-            show_source: false
             show_root_heading: true
             show_root_full_path: false
             members_order: source
-            separate_signature: true
-            show_signature_annotations: true
-            signature_crossrefs: true
             filters:
               - "!^_"

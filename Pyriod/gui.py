@@ -1478,6 +1478,18 @@ class PyriodGUI:
     def update_log(self):
         """Refresh the displayed log from ``pw.log_html``."""
         self._log.value = self.pw.log_html
+
+        # Refresh any open analysis tabs.
+        for analysis in getattr(self, "_analyses", {}).values():
+            try:
+                analysis.refresh()
+            except Exception as exc:
+                self.pw.log(
+                    f"{type(analysis).__name__} refresh failed: "
+                    f"{type(exc).__name__}: {exc}",
+                    level="debug",
+                )
+                pass
     
     def log(self, message, level='info'):
         """Record a message in the Pyriod log and refresh the log display.
@@ -1533,7 +1545,36 @@ class PyriodGUI:
 
     ### Functions for extending the GUI to include additional analysis tabs.
     def add_analysis(self, analysis_class, **kwargs):
-        """Add an optional analysis interface as a new tab."""
+        """Add an optional analysis interface as a new GUI tab.
+
+        Parameters
+        ----------
+        analysis_class : type
+            `AnalysisGUI` subclass to instantiate and add to the Pyriod
+            interface.
+        **kwargs
+            Additional keyword arguments passed to the analysis GUI
+            constructor.
+
+        Returns
+        -------
+        AnalysisGUI
+            Newly created analysis interface.
+
+        Raises
+        ------
+        TypeError
+            If ``analysis_class`` is not an `AnalysisGUI` subclass.
+        ValueError
+            If an instance of the same analysis class is already open.
+
+        Notes
+        -----
+        The analysis shares this GUI's `Prewhitener`. Its log-refresh and
+        tab-removal callbacks are connected automatically.
+
+        Use ``remove_analysis()`` to close and remove the tab.
+        """
 
         if (
             not isinstance(analysis_class, type)
@@ -1570,7 +1611,29 @@ class PyriodGUI:
         return analysis     
 
     def remove_analysis(self, analysis):
-        """Close and remove an optional analysis tab."""
+            """Close and remove an optional analysis tab.
+
+            Parameters
+            ----------
+            analysis : AnalysisGUI, type, or str
+                Analysis to remove. May be supplied as the open analysis
+                instance, its `AnalysisGUI` subclass, or its class name.
+
+            Returns
+            -------
+            bool
+                True if an open analysis was found and removed; otherwise False.
+
+            Raises
+            ------
+            TypeError
+                If ``analysis`` is not a supported identifier.
+
+            Notes
+            -----
+            The analysis's ``close()`` method is called before the tab is
+            removed from the Pyriod interface.
+            """
 
         if isinstance(analysis, str):
             name = analysis
