@@ -1,22 +1,19 @@
 site_name: Pyriod
 
 nav:
-  - Home: index.md
-  - Walkthrough: walkthrough.md
+    - Home: index.md
+    - Walkthrough: walkthrough.md
 
-  - Advanced Analyses:
-      - Overview: analyses/index.md
-      - Analysis GUI Tabs: analyses/gui_tabs.md
-      - Bootstrap Significance: analyses/bootstrap.md
-      - Spectral Window: analyses/spectral_window.md
+    - Advanced Analyses:
+        - Overview: analyses/index.md
+        - Using Analysis GUI Tabs: analyses/gui_tabs.md
+        - Bootstrap Significance: analyses/bootstrap.md
+        - Spectral Window: analyses/spectral_window.md
 
-  - API Reference:
-      - Prewhitener: api/prewhitener.md
-      - PyriodGUI: api/gui.md
-      - Advanced Analyses:
-          - Bootstrap: api/analyses/bootstrap.md
-          - Spectral Window: api/analyses/spectral_window.md
-          - AnalysisGUI: api/analyses/gui.md
+    - API Reference:
+        - Pyriod: api/pyriod.md
+        - Prewhitener: api/prewhitener.md
+        - PyriodGUI: api/gui.md
 
   - Developer Guide:
       - Extending Analyses: developer/analyses.md
