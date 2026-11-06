@@ -15,8 +15,8 @@ nav:
         - Prewhitener: api/prewhitener.md
         - PyriodGUI: api/gui.md
 
-  - Developer Guide:
-      - Extending Analyses: developer/analyses.md
+    - Developer Guide:
+        - Extending Analyses: developer/analyses.md
 
 theme:
   name: readthedocs
