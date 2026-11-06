@@ -1611,29 +1611,29 @@ class PyriodGUI:
         return analysis     
 
     def remove_analysis(self, analysis):
-            """Close and remove an optional analysis tab.
+        """Close and remove an optional analysis tab.
 
-            Parameters
-            ----------
-            analysis : AnalysisGUI, type, or str
-                Analysis to remove. May be supplied as the open analysis
-                instance, its `AnalysisGUI` subclass, or its class name.
+        Parameters
+        ----------
+        analysis : AnalysisGUI, type, or str
+            Analysis to remove. May be supplied as the open analysis
+            instance, its `AnalysisGUI` subclass, or its class name.
 
-            Returns
-            -------
-            bool
-                True if an open analysis was found and removed; otherwise False.
+        Returns
+        -------
+        bool
+            True if an open analysis was found and removed; otherwise False.
 
-            Raises
-            ------
-            TypeError
-                If ``analysis`` is not a supported identifier.
+        Raises
+        ------
+        TypeError
+            If ``analysis`` is not a supported identifier.
 
-            Notes
-            -----
-            The analysis's ``close()`` method is called before the tab is
-            removed from the Pyriod interface.
-            """
+        Notes
+        -----
+        The analysis's ``close()`` method is called before the tab is
+        removed from the Pyriod interface.
+        """
 
         if isinstance(analysis, str):
             name = analysis
