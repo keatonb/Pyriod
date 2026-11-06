@@ -36,4 +36,5 @@ You can view a list of package requirements [here](https://github.com/keatonb/Py
 
 This material is based upon work supported by the National
 Science Foundation under Grant No. AST-2406917.
+Some of the code and most of these docs were generated with ChatGPT with the developer's close oversight.
 
