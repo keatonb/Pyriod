@@ -770,22 +770,6 @@ class PyriodGUI:
         else:
             self._refit.button_style = 'warning'
 
-    def refresh_from_prewhitener(self):
-        """Refresh GUI displays from the current `Prewhitener` state."""
-        self._update_freq_dropdown()
-
-        self._update_lc_display()
-        self._refresh_model_line_from_view()
-
-        self._refresh_periodogram_lines_from_view()
-        self._update_signal_markers()
-        self._display_per_markers()
-        self._mark_highest_peak()
-
-        self._update_signals_qgrid()
-        self._update_fit_report()
-        self.update_log()
-
     def refresh_from_prewhitener(self, reset_limits=False):
         """Refresh GUI displays from the current Prewhitener state.
 
@@ -970,6 +954,23 @@ class PyriodGUI:
             [widgets.Box([self._log]),
              savelog])
 
+    def _init_tabs(self):
+        """Initialize the main Pyriod tab widget if needed."""
+        if hasattr(self, "_tabs"):
+            return
+
+        self._base_tabs = [
+            ("Time Series", self.TimeSeries()),
+            ("Periodogram", self.Periodogram()),
+            ("Signals", self.Signals()),
+            ("Log", self.Log()),
+        ]
+
+        self._analyses = {}
+
+        self._tabs = widgets.Tab()
+        self._rebuild_tabs()
+
     def Pyriod(self):
         """Return the complete interactive Pyriod interface. 
         
@@ -981,20 +982,7 @@ class PyriodGUI:
         ipywidgets.Widget 
             Tabbed widget containing the complete Pyriod interface. 
         """
-        if hasattr(self, "_tabs"):
-            return self._tabs
-
-        self._base_tabs = [
-            ("Time Series", self.TimeSeries()),
-            ("Periodogram", self.Periodogram()),
-            ("Signals", self.Signals()),
-            ("Log", self.Log()),
-        ]
-        self._analyses = {}
-
-        self._tabs = widgets.Tab()
-        self._rebuild_tabs()
-
+        self._init_tabs()
         return self._tabs
 
     def _rebuild_tabs(self):
@@ -1584,8 +1572,7 @@ class PyriodGUI:
                 "analysis_class must be a subclass of AnalysisGUI."
             )
 
-        if not hasattr(self, "_analyses"):
-            self._analyses = {}
+        self._init_tabs()
 
         name = analysis_class.__name__
 
@@ -1608,7 +1595,7 @@ class PyriodGUI:
         # Select the newly added tab.
         self._tabs.selected_index = len(self._tabs.children) - 1
 
-        return analysis     
+        return analysis
 
     def remove_analysis(self, analysis):
         """Close and remove an optional analysis tab.
